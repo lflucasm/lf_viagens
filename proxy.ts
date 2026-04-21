@@ -1,4 +1,4 @@
-// middleware.ts
+// proxy.ts (Next.js 16+: substitui middleware.ts)
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -18,7 +18,7 @@ function sanitizeNext(nextParam?: string | null) {
   return null;
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const url = req.nextUrl;
   const sessionCookie = req.cookies.get("tm.session")?.value;
   const isLogin = url.pathname === "/login" || url.pathname.startsWith("/login/"); // se tiver subrotas
@@ -54,6 +54,6 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // só aplica em /dashboard/* e /login (inclui subrotas de login)
-  matcher: ["/dashboard/:path*", "/login/:path*"],
+  // /login explícito + subrotas; dashboard protegido
+  matcher: ["/dashboard/:path*", "/login", "/login/:path*"],
 };
