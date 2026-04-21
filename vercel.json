@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/clubes",
+      "schedule": "5 9 * * *"
+    }
+  ]
+}

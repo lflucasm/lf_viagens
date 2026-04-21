@@ -1,0 +1,2 @@
+ALTER TABLE "sales"
+ADD COLUMN "smilesLocatorLossCents" INTEGER NOT NULL DEFAULT 0;

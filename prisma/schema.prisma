@@ -1,0 +1,1735 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Prisma 7+: NÃO coloque url aqui se você usa prisma.config.ts
+}
+
+/**
+ * =========================
+ * ENUMS BÁSICOS
+ * =========================
+ */
+enum CedenteStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CedenteExclusionScope {
+  ACCOUNT
+  PROGRAM
+}
+
+enum PixTipo {
+  CPF
+  CNPJ
+  EMAIL
+  TELEFONE
+  ALEATORIA
+}
+
+enum SalePaymentStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+/**
+ * =========================
+ * BLOQUEIOS / PROGRAMAS
+ * =========================
+ */
+enum LoyaltyProgram {
+  LATAM
+  SMILES
+  LIVELO
+  ESFERA
+}
+
+enum BlockStatus {
+  OPEN
+  UNBLOCKED
+  CANCELED
+}
+
+enum CedenteCommissionStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+/**
+ * =========================
+ * ✅ CLUBES (ASSINATURAS)
+ * =========================
+ */
+enum ClubSubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELED
+}
+
+/**
+ * =========================
+ * ✅ PROTOCOLOS (RECLAMAÇÕES)
+ * =========================
+ */
+enum ProtocolStatus {
+  DRAFT
+  SENT
+  WAITING
+  RESOLVED
+  DENIED
+}
+
+/**
+ * =========================
+ * ✅ TERMOS / CONFIANÇA (NOVO)
+ * =========================
+ */
+enum TermTriState {
+  YES
+  NO
+  NO_RESPONSE
+}
+
+enum TermResponseTime {
+  H1   // 30
+  H2   // 20
+  H3   // 10
+  GT3  // 0
+}
+
+/**
+ * =========================
+ * USERS / LOGIN / CONVITES
+ * =========================
+ */
+model User {
+  id    String @id @default(uuid())
+  login String @unique
+  name  String
+
+  employeeId String? @unique
+
+  cpf          String? @unique
+  email        String? @unique
+  team         String
+  role         String
+  passwordHash String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Cedentes em que o usuário é o "responsável" (owner)
+  cedentesOwned Cedente[] @relation("CedenteOwner")
+
+  // Cedentes que ele revisou (aprovou/reprovou)
+  cedentesReviewed Cedente[] @relation("CedenteReviewedBy")
+
+  // ✅ Exclusões definitivas de cedentes (auditoria)
+  cedenteExclusionsPerformed CedenteExclusion[] @relation("CedenteExclusionDeletedBy")
+  cedenteExclusionsRestored  CedenteExclusion[] @relation("CedenteExclusionRestoredBy")
+
+  // Dívidas criadas por este usuário
+  debtsCreated Debt[]
+
+  // Bloqueios criados por este usuário
+  blockedCreated BlockedAccount[] @relation("BlockedCreatedBy")
+
+  // Observações de bloqueio criadas por este usuário
+  blockedObsCreated BlockObservation[] @relation("BlockedObsCreatedBy")
+
+  // Compras liberadas por este usuário
+  comprasLiberadas Purchase[] @relation("CompraLiberadaPor")
+
+  // Compras finalizadas por este usuário
+  comprasFinalizadas Purchase[] @relation("PurchaseFinalizedBy")
+
+  // Comissões de cedente (geradas / pagas)
+  cedenteCommissionsGenerated CedenteCommission[] @relation("CedenteCommissionGeneratedBy")
+  cedenteCommissionsPaid      CedenteCommission[] @relation("CedenteCommissionPaidBy")
+
+  // Clientes criados por este usuário
+  clientesCreated Cliente[] @relation("ClienteCreatedBy")
+
+  // Vendas feitas por este usuário
+  salesSold Sale[] @relation("SaleSeller")
+
+  // Emissões no balcão (compra e venda)
+  balcaoOperations BalcaoOperacao[] @relation("BalcaoEmployee")
+
+  /**
+   * =========================
+   * RATEIO (BASE PERCENTUAL)
+   * =========================
+   */
+  profitSharesOwned  ProfitShare[]     @relation("ProfitShareOwner")
+  profitShareAsPayee ProfitShareItem[] @relation("ProfitSharePayee")
+
+  /**
+   * =========================
+   * PAGAMENTOS (COMISSÕES FUNCIONÁRIOS POR DIA)
+   * =========================
+   */
+  employeePayouts     EmployeePayout[] @relation("EmployeePayoutUser")
+  employeePayoutsPaid EmployeePayout[] @relation("EmployeePayoutPaidBy")
+
+  /**
+   * =========================
+   * IMPOSTOS (PAGAMENTO MENSAL)
+   * =========================
+   */
+  taxMonthsPaid TaxMonthPayment[] @relation("TaxMonthPaidBy")
+
+  // ✅ PROTOCOLOS
+  protocolsCreated Protocol[] @relation("ProtocolCreatedBy")
+  protocolsUpdated Protocol[] @relation("ProtocolUpdatedBy")
+
+  // Um convite por usuário
+  employeeInvite  EmployeeInvite?
+  dividaARecebers DividaAReceber[]
+
+  // ✅ WALLET (quem atualizou)
+  walletBalancesUpdated WalletBalance[] @relation("WalletBalanceUpdatedBy")
+
+  // ✅ Grupo VIP WhatsApp (links, inscrições e pagamentos)
+  vipWhatsappLinks            VipWhatsappLink[]    @relation("VipWhatsappLinkEmployee")
+  vipWhatsappLeads            VipWhatsappLead[]    @relation("VipWhatsappLeadEmployee")
+  vipWhatsappLeadsApproved    VipWhatsappLead[]    @relation("VipWhatsappLeadApprovedBy")
+  vipWhatsappPaymentsRecorded VipWhatsappPayment[] @relation("VipWhatsappPaymentRecordedBy")
+  vipWhatsappRateioShares     VipWhatsappRateioShare[] @relation("VipWhatsappRateioShareEmployee")
+
+  /**
+   * =========================
+   * ✅ AGENDA (NOVO)
+   * =========================
+   * IMPORTANTE: estes back-relations evitam erro "missing opposite field"
+   */
+  agendaEvents         AgendaEvent[]       @relation("AgendaEventUser")
+  agendaEventsCreated  AgendaEvent[]       @relation("AgendaEventCreatedBy")
+  agendaEventsCanceled AgendaEvent[]       @relation("AgendaEventCanceledBy")
+  agendaAuditsActor    AgendaAudit[]       @relation("AgendaAuditActor")
+  agendaMemberColors   AgendaMemberColor[] @relation("AgendaMemberColorUser")
+  anotacoesCreated     Anotacao[]          @relation("AnotacaoCreatedBy")
+  latamPromoListItemsAdded    LatamPromoListItem[] @relation("LatamPromoListItemAddedBy")
+  latamPromoListItemsReviewed LatamPromoListItem[] @relation("LatamPromoListItemReviewedBy")
+
+  @@index([team])
+  @@index([role])
+  @@map("users")
+}
+
+model EmployeeInvite {
+  id     String @id @default(uuid())
+  userId String @unique
+  code   String @unique
+
+  isActive   Boolean   @default(true)
+  uses       Int       @default(0)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cedentes Cedente[]
+
+  @@index([isActive])
+  @@index([userId])
+  @@map("employee_invites")
+}
+
+enum VipWhatsappLeadStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model VipWhatsappLink {
+  id String @id @default(cuid())
+
+  team       String
+  employeeId String
+  code       String @unique
+
+  whatsappE164 String
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee User              @relation("VipWhatsappLinkEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  leads    VipWhatsappLead[]
+
+  @@unique([team, employeeId], map: "uniq_vip_whatsapp_link_team_employee")
+  @@index([team, isActive])
+  @@index([team, code])
+  @@map("vip_whatsapp_links")
+}
+
+model VipWhatsappLead {
+  id String @id @default(cuid())
+
+  team       String
+  linkId     String
+  employeeId String
+
+  fullName      String
+  birthDate     DateTime
+  countryCode   String
+  areaCode      String
+  phoneNumber   String
+  whatsappE164  String
+  originAirport String
+
+  destinationAirport1 String
+  destinationAirport2 String
+  destinationAirport3 String
+
+  firstMonthCents     Int @default(990)
+  recurringMonthCents Int @default(1490)
+
+  status VipWhatsappLeadStatus @default(PENDING)
+
+  approvedAt   DateTime?
+  approvedById String?
+
+  internalNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  link       VipWhatsappLink      @relation(fields: [linkId], references: [id], onDelete: Restrict)
+  employee   User                 @relation("VipWhatsappLeadEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  approvedBy User?                @relation("VipWhatsappLeadApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  payments   VipWhatsappPayment[]
+
+  @@index([team, status, createdAt])
+  @@index([employeeId, createdAt])
+  @@index([linkId])
+  @@map("vip_whatsapp_leads")
+}
+
+model VipWhatsappPayment {
+  id String @id @default(cuid())
+
+  team   String
+  leadId String
+
+  monthRef    String?
+  amountCents Int
+  note        String?
+  paidAt      DateTime @default(now())
+
+  recordedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead       VipWhatsappLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  recordedBy User?           @relation("VipWhatsappPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([team, paidAt])
+  @@index([leadId, paidAt])
+  @@map("vip_whatsapp_payments")
+}
+
+model VipWhatsappRateioSetting {
+  id String @id @default(cuid())
+
+  team String @unique
+
+  ownerPercentBps Int    @default(7000)
+  othersPercentBps Int   @default(3000)
+  taxPercentBps    Int   @default(1000)
+  payoutDaysCsv    String @default("1")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team])
+  @@map("vip_whatsapp_rateio_settings")
+}
+
+model VipWhatsappRateioShare {
+  id String @id @default(cuid())
+
+  team       String
+  employeeId String
+  shareBps   Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee User @relation("VipWhatsappRateioShareEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([team, employeeId], map: "uniq_vip_whatsapp_rateio_share_team_employee")
+  @@index([team])
+  @@index([team, shareBps])
+  @@map("vip_whatsapp_rateio_shares")
+}
+
+/**
+ * =========================
+ * RATEIO (BASE PERCENTUAL) — VERSIONADO POR DATA
+ * =========================
+ */
+model ProfitShare {
+  id      String @id @default(cuid())
+  team    String
+  ownerId String
+
+  effectiveFrom DateTime  @default(dbgenerated("'2000-01-01 00:00:00'::timestamp"))
+  effectiveTo   DateTime?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner User              @relation("ProfitShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  items ProfitShareItem[]
+
+  @@unique([team, ownerId, effectiveFrom], map: "uniq_profitshare_owner_from")
+  @@index([team])
+  @@index([ownerId])
+  @@index([team, ownerId, effectiveFrom])
+  @@index([team, ownerId, effectiveTo])
+  @@map("profit_shares")
+}
+
+model ProfitShareItem {
+  id      String @id @default(cuid())
+  shareId String
+  payeeId String
+
+  bps Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  share ProfitShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  payee User        @relation("ProfitSharePayee", fields: [payeeId], references: [id], onDelete: Cascade)
+
+  @@unique([shareId, payeeId])
+  @@index([payeeId])
+  @@map("profit_share_items")
+}
+
+/**
+ * =========================
+ * CEDENTES
+ * =========================
+ */
+model Cedente {
+  id            String @id @default(uuid())
+  identificador String @unique
+
+  nomeCompleto   String
+  dataNascimento DateTime?
+  cpf            String @unique
+
+  telefone    String?
+  emailCriado String?
+
+  banco             String
+  pixTipo           PixTipo
+  chavePix          String
+  titularConfirmado Boolean @default(true)
+
+  senhaEmail     String?
+  senhaSmiles    String?
+  senhaLatamPass String?
+  senhaLivelo    String?
+  senhaEsfera    String?
+
+  pontosLatam  Int @default(0)
+  pontosSmiles Int @default(0)
+  pontosLivelo Int @default(0)
+  pontosEsfera Int @default(0)
+
+  status     CedenteStatus @default(PENDING)
+  reviewedAt DateTime?
+
+  reviewedById String?
+  reviewedBy   User? @relation("CedenteReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  ownerId String
+  owner   User @relation("CedenteOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  inviteId String?
+  invite   EmployeeInvite? @relation(fields: [inviteId], references: [id], onDelete: SetNull)
+
+  termAcceptances CedenteTermAcceptance[]
+
+  // ✅ NOVO: reviews/score de termo por versão
+  termReviews CedenteTermReview[]
+
+  // ✅ score operacional do cedente (0-10 por critério)
+  score CedenteScore?
+
+  // ✅ horários de biometria (LATAM)
+  biometriaHorario CedenteBiometriaHorario?
+
+  // ✅ anotações operacionais por conta
+  anotacoes Anotacao[]
+
+  blockedAccounts    BlockedAccount[]
+  purchases          Purchase[]
+  cedenteCommissions CedenteCommission[]
+  emissions          EmissionEvent[]
+  sales              Sale[]
+
+  // ✅ assinaturas de clube por cedente
+  clubSubscriptions ClubSubscription[]
+
+  // ✅ marcações do Turbo LATAM por mês
+  latamTurboMonths LatamTurboMonth[] @relation("LatamTurboMonthCedente")
+
+  latamTurboAccount LatamTurboAccount? @relation("LatamTurboAccountCedente")
+  latamPromoListItems LatamPromoListItem[] @relation("LatamPromoListItemCedente")
+
+  // ✅ PROTOCOLOS
+  protocols Protocol[]
+
+  // ✅ WALLET
+  walletBalances WalletBalance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([inviteId])
+  @@index([createdAt])
+  @@map("cedentes")
+}
+
+model CedenteExclusion {
+  id String @id @default(cuid())
+
+  team String
+
+  cedenteId            String
+  cedenteIdentificador String
+  cedenteNomeCompleto  String
+  cedenteCpf           String
+
+  scope   CedenteExclusionScope
+  program LoyaltyProgram?
+
+  details Json?
+
+  deletedById String?
+  deletedBy   User? @relation("CedenteExclusionDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  restoredAt      DateTime?
+  restoredById    String?
+  restoredBy      User?     @relation("CedenteExclusionRestoredBy", fields: [restoredById], references: [id], onDelete: SetNull)
+  restoreDetails  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([cedenteId])
+  @@index([team, createdAt])
+  @@index([scope, program])
+  @@index([restoredAt])
+  @@index([createdAt])
+  @@map("cedente_exclusions")
+}
+
+model CedenteTermAcceptance {
+  id          String   @id @default(uuid())
+  cedenteId   String
+  termoVersao String
+  ip          String?
+  userAgent   String?
+  acceptedAt  DateTime @default(now())
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@index([cedenteId])
+  @@index([acceptedAt])
+  @@map("cedente_term_acceptances")
+}
+
+/**
+ * =========================
+ * ✅ TERMOS / CONFIANÇA (NOVO)
+ * =========================
+ * Um registro por Cedente + Versão do Termo
+ */
+model CedenteTermReview {
+  id          String @id @default(uuid())
+  cedenteId   String
+  termoVersao String
+
+  // 1) Aceite Livelo/Esfera/Smiles
+  aceiteOutros TermTriState?
+  // 2) Aceite LATAM
+  aceiteLatam  TermTriState?
+  // 3) Exclusão definitiva
+  exclusaoDef  TermTriState?
+
+  // 4) Tempo para responder o termo
+  responseTime TermResponseTime?
+
+  // 5) Pontos de disponibilidade (0–70)
+  disponibilidadePoints Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@unique([cedenteId, termoVersao], map: "uniq_cedente_termo_versao")
+  @@index([termoVersao])
+  @@index([cedenteId])
+  @@map("cedente_term_reviews")
+}
+
+model CedenteScore {
+  id        String @id @default(uuid())
+  cedenteId String @unique
+
+  rapidezBiometria  Float @default(0)
+  rapidezSms        Float @default(0)
+  resolucaoProblema Float @default(0)
+  confianca         Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
+  @@map("cedente_scores")
+}
+
+/**
+ * =========================
+ * ✅ HORÁRIOS DE BIOMETRIA (LATAM)
+ * =========================
+ * Um registro por Cedente (turnos disponíveis)
+ */
+model CedenteBiometriaHorario {
+  id        String @id @default(uuid())
+  cedenteId String @unique
+
+  turnoManha Boolean @default(false)
+  turnoTarde Boolean @default(false)
+  turnoNoite Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@index([cedenteId])
+  @@map("cedente_biometria_horarios")
+}
+
+/**
+ * =========================
+ * ✅ CLUBES (ASSINATURAS) — FORA DA COMPRA
+ * =========================
+ */
+model ClubSubscription {
+  id String @id @default(cuid())
+
+  // facilita query por time (derivado do owner.team, mas gravado aqui)
+  team      String
+  cedenteId String
+  program   LoyaltyProgram
+
+  // Ex: 10 => 10k
+  tierK      Int @default(0)
+  priceCents Int @default(0)
+
+  subscribedAt DateTime
+  renewalDay   Int @default(1)
+  monthlyBonusPoints Int @default(0)
+
+  // controle operacional
+  lastRenewedAt    DateTime?
+  pointsExpireAt   DateTime?
+  renewedThisCycle Boolean                @default(false)
+  status           ClubSubscriptionStatus @default(ACTIVE)
+
+  smilesBonusEligibleAt DateTime?
+
+  notes String?
+
+  sourcePurchaseItemId String? @unique
+  sourcePurchaseItem   PurchaseItem? @relation("ClubSubFromPurchaseItem", fields: [sourcePurchaseItemId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@index([team, program])
+  @@index([team, status])
+  @@index([cedenteId])
+  @@index([pointsExpireAt])
+  @@map("club_subscriptions")
+}
+
+/**
+ * =========================
+ * ✅ PROTOCOLOS
+ * =========================
+ */
+model Protocol {
+  id String @id @default(cuid())
+
+  team    String
+  program LoyaltyProgram
+  status  ProtocolStatus @default(DRAFT)
+
+  title     String? @db.VarChar(120)
+  complaint String  @db.Text
+  response  String? @db.Text
+
+  cedenteId String
+  cedente   Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("ProtocolCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User? @relation("ProtocolUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team, program, status])
+  @@index([team, program, cedenteId, createdAt])
+  @@index([cedenteId])
+  @@map("protocols")
+}
+
+/**
+ * =========================
+ * ✅ WALLET (SALDO EM REAIS POR CEDENTE/PROGRAMA)
+ * =========================
+ */
+model WalletBalance {
+  id String @id @default(cuid())
+
+  team      String
+  cedenteId String
+  program   LoyaltyProgram
+
+  amountCents Int @default(0)
+
+  updatedById String?
+  updatedBy   User? @relation("WalletBalanceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@unique([team, cedenteId, program], map: "uniq_wallet_balance_team_cedente_program")
+  @@index([team, program])
+  @@index([cedenteId])
+  @@map("wallet_balances")
+}
+
+/**
+ * =========================
+ * SNAPSHOT (CAIXA + TOTAIS)
+ * =========================
+ */
+model CashSnapshot {
+  id   String   @id @default(cuid())
+  team String
+  date DateTime
+
+  cashCents Int @default(0)
+
+  totalBruto   Int
+  totalDividas Int
+  totalLiquido Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team, date])
+  @@index([team, createdAt])
+  @@map("cash_snapshots")
+}
+
+model CreditCardBalance {
+  id          String @id @default(cuid())
+  team        String
+  description String
+  amountCents Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team])
+  @@map("credit_card_balances")
+}
+
+model Settings {
+  id  String @id @default(cuid())
+  key String @unique
+
+  latamRateCents  Int @default(2000)
+  smilesRateCents Int @default(1800)
+  liveloRateCents Int @default(2200)
+  esferaRateCents Int @default(1700)
+
+  taxPercent       Int      @default(8)
+  taxEffectiveFrom DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+/**
+ * =========================
+ * DÍVIDAS
+ * =========================
+ */
+enum DebtStatus {
+  OPEN
+  PAID
+  CANCELED
+}
+
+model Debt {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  totalCents  Int
+  status      DebtStatus @default(OPEN)
+
+  creditorName String?
+  dueDate      DateTime?
+  payOrder     Int?
+
+  createdById String?
+  createdBy   User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  payments DebtPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([creditorName])
+  @@index([dueDate])
+  @@index([createdAt])
+  @@map("debts")
+}
+
+model DebtPayment {
+  id          String   @id @default(cuid())
+  debtId      String
+  amountCents Int
+  note        String?
+  paidAt      DateTime @default(now())
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([debtId])
+  @@index([paidAt])
+  @@map("debt_payments")
+}
+
+/**
+ * =========================
+ * BLOQUEIOS
+ * =========================
+ */
+model BlockedAccount {
+  id String @id @default(cuid())
+
+  cedenteId String
+  program   LoyaltyProgram
+  status    BlockStatus @default(OPEN)
+
+  note              String?
+  estimatedUnlockAt DateTime?
+
+  createdById String?
+  createdBy   User? @relation("BlockedCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  resolvedAt   DateTime?
+  observations BlockObservation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@unique([cedenteId, program, status], map: "uniq_open_block_per_program")
+  @@index([cedenteId])
+  @@index([program])
+  @@index([status])
+  @@index([createdAt])
+  @@map("blocked_accounts")
+}
+
+model BlockObservation {
+  id        String @id @default(cuid())
+  blockedId String
+  text      String
+
+  createdById String?
+  createdBy   User? @relation("BlockedObsCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  blocked BlockedAccount @relation(fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@index([blockedId])
+  @@index([createdAt])
+  @@map("block_observations")
+}
+
+/**
+ * =========================
+ * COMPRAS
+ * =========================
+ */
+enum PurchaseStatus {
+  OPEN
+  CLOSED
+  CANCELED
+}
+
+enum PurchaseItemType {
+  CLUB
+  POINTS_BUY
+  TRANSFER
+  ADJUSTMENT
+  EXTRA_COST
+}
+
+enum PurchaseItemStatus {
+  PENDING
+  RELEASED
+  CANCELED
+}
+
+enum TransferMode {
+  FULL_POINTS
+  POINTS_PLUS_CASH
+}
+
+model Purchase {
+  id        String         @id @default(cuid())
+  numero    String         @unique
+  cedenteId String
+  status    PurchaseStatus @default(OPEN)
+
+  ciaAerea       LoyaltyProgram?
+  pontosCiaTotal Int @default(0)
+
+  cedentePayCents     Int @default(0)
+  vendorCommissionBps Int @default(100)
+
+  subtotalCents Int @default(0)
+  comissaoCents Int @default(0)
+  totalCents    Int @default(0)
+
+  custoMilheiroCents Int @default(0)
+  metaMarkupCents    Int @default(150)
+  metaMilheiroCents  Int @default(0)
+
+  saldoPrevistoLatam  Int?
+  saldoPrevistoSmiles Int?
+  saldoPrevistoLivelo Int?
+  saldoPrevistoEsfera Int?
+
+  saldoAplicadoLatam  Int?
+  saldoAplicadoSmiles Int?
+  saldoAplicadoLivelo Int?
+  saldoAplicadoEsfera Int?
+
+  liberadoEm    DateTime?
+  liberadoPorId String?
+  liberadoPor   User? @relation("CompraLiberadaPor", fields: [liberadoPorId], references: [id], onDelete: SetNull)
+
+  finalizedAt   DateTime?
+  finalizedById String?
+  finalizedBy   User? @relation("PurchaseFinalizedBy", fields: [finalizedById], references: [id], onDelete: SetNull)
+
+  finalSalesCents            Int?
+  finalSalesPointsValueCents Int?
+  finalSalesTaxesCents       Int?
+
+  finalProfitBrutoCents Int?
+  finalBonusCents       Int?
+  finalProfitCents      Int?
+
+  finalSoldPoints       Int?
+  finalPax              Int?
+  finalAvgMilheiroCents Int?
+  finalRemainingPoints  Int?
+
+  observacao String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente        @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+  items   PurchaseItem[]
+  sales   Sale[]
+
+  cedenteCommission CedenteCommission? @relation("PurchaseCedenteCommission")
+
+  @@index([cedenteId])
+  @@index([status])
+  @@index([ciaAerea])
+  @@index([finalizedAt])
+  @@index([finalizedById])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String             @id @default(cuid())
+  purchaseId String
+  type       PurchaseItemType
+  status     PurchaseItemStatus @default(PENDING)
+
+  programFrom LoyaltyProgram?
+  programTo   LoyaltyProgram?
+
+  pointsBase  Int @default(0)
+  bonusMode   String?
+  bonusValue  Int?
+  pointsFinal Int @default(0)
+
+  amountCents  Int @default(0)
+  transferMode TransferMode?
+
+  pointsDebitedFromOrigin Int @default(0)
+
+  title   String
+  details String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  clubSubscription ClubSubscription? @relation("ClubSubFromPurchaseItem")
+
+  @@index([purchaseId])
+  @@index([type])
+  @@index([status])
+  @@map("purchase_items")
+}
+
+model Counter {
+  key   String @id
+  value Int    @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("counters")
+}
+
+/**
+ * =========================
+ * COMISSÃO DO CEDENTE
+ * =========================
+ */
+model CedenteCommission {
+  id String @id @default(cuid())
+
+  cedenteId String
+  cedente   Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  purchaseId String? @unique
+  purchase   Purchase? @relation("PurchaseCedenteCommission", fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  amountCents Int
+  status      CedenteCommissionStatus @default(PENDING)
+
+  generatedAt   DateTime @default(now())
+  generatedById String?
+  generatedBy   User? @relation("CedenteCommissionGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+
+  paidAt   DateTime?
+  paidById String?
+  paidBy   User? @relation("CedenteCommissionPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cedenteId, status, generatedAt])
+  @@index([paidAt])
+  @@map("cedente_commissions")
+}
+
+/**
+ * =========================
+ * CLIENTES
+ * =========================
+ */
+enum ClienteTipo {
+  PESSOA
+  EMPRESA
+}
+
+enum ClienteOrigem {
+  BALCAO_MILHAS
+  PARTICULAR
+  SITE
+  OUTROS
+}
+
+enum BalcaoAirline {
+  LATAM
+  SMILES
+  AZUL
+  TAP
+  IBERIA
+  FLYING_BLUE
+  COPA_AIRLINES
+  UNITED
+}
+
+model Cliente {
+  id            String @id @default(cuid())
+  identificador String @unique
+
+  tipo ClienteTipo @default(PESSOA)
+  nome String
+
+  cpfCnpj  String?
+  telefone String?
+
+  origem          ClienteOrigem
+  origemDescricao String?
+
+  affiliateId String?
+  affiliate   Affiliate? @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User? @relation("ClienteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  sales Sale[]
+  balcaoOperationsAsSupplier BalcaoOperacao[] @relation("BalcaoSupplierCliente")
+  balcaoOperationsAsFinal    BalcaoOperacao[] @relation("BalcaoFinalCliente")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([origem])
+  @@index([affiliateId])
+  @@index([createdAt])
+  @@map("clientes")
+}
+
+model Affiliate {
+  id String @id @default(cuid())
+
+  team     String
+  name     String
+  document String
+  login    String? @unique
+
+  flightSalesLink    String?
+  pointsPurchaseLink String?
+  commissionBps      Int     @default(0)
+  isActive           Boolean @default(true)
+  passwordHash       String?
+  lastLoginAt        DateTime?
+
+  clients Cliente[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team])
+  @@index([team, document])
+  @@index([team, login])
+  @@index([team, isActive])
+  @@map("affiliates")
+}
+
+/**
+ * =========================
+ * RECEBÍVEIS
+ * =========================
+ */
+enum ReceivableStatus {
+  OPEN
+  RECEIVED
+  CANCELED
+}
+
+model Receivable {
+  id            String           @id @default(cuid())
+  title         String
+  description   String?
+  totalCents    Int
+  receivedCents Int @default(0)
+  balanceCents  Int
+  status        ReceivableStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  receipts Receipt[]
+  sale     Sale? @relation("SaleReceivable")
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("receivables")
+}
+
+model Receipt {
+  id           String     @id @default(cuid())
+  receivableId String
+  receivable   Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+
+  amountCents Int
+  note        String?
+  receivedAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([receivableId])
+  @@index([receivedAt])
+  @@map("Receipt")
+}
+
+/**
+ * =========================
+ * CONTAGEM CPF (EMISSÕES)
+ * =========================
+ */
+enum EmissionSource {
+  SALE
+  MANUAL
+  ADJUSTMENT
+}
+
+model EmissionEvent {
+  id String @id @default(cuid())
+
+  cedenteId String
+  cedente   Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  program         LoyaltyProgram
+  passengersCount Int @default(1)
+
+  issuedAt DateTime
+  source   EmissionSource @default(SALE)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([cedenteId, program, issuedAt])
+  @@index([program, issuedAt])
+  @@map("emission_events")
+}
+
+/**
+ * =========================
+ * VENDAS
+ * =========================
+ */
+model Sale {
+  id     String @id @default(cuid())
+  numero String @unique
+
+  date DateTime
+
+  program    LoyaltyProgram
+  points     Int
+  passengers Int
+
+  milheiroCents Int
+
+  embarqueFeeCents Int @default(0)
+  pointsValueCents Int @default(0)
+  totalCents       Int @default(0)
+
+  commissionCents Int @default(0)
+  bonusCents      Int @default(0)
+
+  metaMilheiroCents Int @default(0)
+
+  feeCardLabel String?
+  locator      String?
+  purchaseCode String?
+  firstPassengerLastName String?
+  departureAirportIata   String?
+  departureDate DateTime?
+  returnDate    DateTime?
+  latamLocatorCheckStatus String?
+  latamLocatorCheckedAt   DateTime?
+  latamLocatorCheckNote   String?
+  smilesLocatorManualStatus    String?
+  smilesLocatorManualCheckedAt DateTime?
+  smilesLocatorLossCents       Int      @default(0)
+
+  paymentStatus SalePaymentStatus @default(PENDING)
+  paidAt        DateTime?
+
+  cedenteId String
+  cedente   Cedente @relation(fields: [cedenteId], references: [id], onDelete: Restrict)
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+
+  purchaseId String?
+  purchase   Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  sellerId String?
+  seller   User? @relation("SaleSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+
+  receivableId String? @unique
+  receivable   Receivable? @relation("SaleReceivable", fields: [receivableId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([program, date])
+  @@index([paymentStatus])
+  @@index([cedenteId])
+  @@index([clienteId])
+  @@index([purchaseId])
+  @@map("sales")
+}
+
+/**
+ * =========================
+ * EMISSOES NO BALCAO (COMPRA E VENDA)
+ * =========================
+ */
+model BalcaoOperacao {
+  id String @id @default(cuid())
+
+  team    String
+  airline BalcaoAirline
+
+  supplierClienteId String
+  finalClienteId    String
+  employeeId        String?
+
+  points           Int
+  buyRateCents     Int
+  sellRateCents    Int
+  boardingFeeCents Int @default(0)
+
+  supplierPayCents    Int
+  customerChargeCents Int
+  profitCents         Int
+
+  locator String?
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  supplierCliente Cliente @relation("BalcaoSupplierCliente", fields: [supplierClienteId], references: [id], onDelete: Restrict)
+  finalCliente    Cliente @relation("BalcaoFinalCliente", fields: [finalClienteId], references: [id], onDelete: Restrict)
+  employee        User?   @relation("BalcaoEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([team, createdAt])
+  @@index([team, supplierClienteId])
+  @@index([team, finalClienteId])
+  @@index([team, employeeId])
+  @@index([team, locator])
+  @@map("balcao_operacoes")
+}
+
+/**
+ * =========================
+ * PAGAMENTOS (COMISSÕES FUNCIONÁRIOS POR DIA)
+ * =========================
+ */
+model EmployeePayout {
+  id String @id @default(cuid())
+
+  team   String
+  date   String
+  userId String
+
+  grossProfitCents Int @default(0)
+  tax7Cents        Int @default(0)
+  feeCents         Int @default(0)
+  netPayCents      Int @default(0)
+
+  breakdown Json?
+
+  paidAt   DateTime?
+  paidById String?
+
+  user   User  @relation("EmployeePayoutUser", fields: [userId], references: [id], onDelete: Cascade)
+  paidBy User? @relation("EmployeePayoutPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([team, date, userId], map: "uniq_employee_payout_team_day_user")
+  @@index([team, date])
+  @@index([userId, date])
+  @@map("employee_payouts")
+}
+
+/**
+ * =========================
+ * IMPOSTOS (FECHAMENTO / PAGAMENTO MENSAL)
+ * =========================
+ */
+model TaxMonthPayment {
+  id String @id @default(cuid())
+
+  team  String
+  month String
+
+  totalTaxCents Int @default(0)
+  breakdown     Json?
+
+  paidAt   DateTime?
+  paidById String?
+  paidBy   User? @relation("TaxMonthPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([team, month], map: "uniq_tax_month_payment_team_month")
+  @@index([team, month])
+  @@index([paidAt])
+  @@map("tax_month_payments")
+}
+
+model CaixaImediatoSnapshot {
+  id                String @id @default(cuid())
+  team              String
+  date              String
+  cashCents         Int @default(0)
+  totalBrutoCents   Int @default(0)
+  totalDividasCents Int @default(0)
+  totalLiquidoCents Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team, date])
+  @@index([team, createdAt])
+  @@map("caixa_imediato_snapshots")
+}
+
+enum LatamTurboStatus {
+  PENDING
+  TRANSFERRED
+  SKIPPED
+}
+
+enum LatamPromoListStatus {
+  PENDING
+  ELIGIBLE
+  DENIED
+  USED
+}
+
+model LatamTurboMonth {
+  id        String @id @default(cuid())
+  team      String
+  monthKey  String
+  cedenteId String
+  status    LatamTurboStatus @default(PENDING)
+  points    Int @default(0)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation("LatamTurboMonthCedente", fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@unique([team, monthKey, cedenteId], name: "team_monthKey_cedenteId")
+  @@index([team, monthKey, status])
+  @@map("latam_turbo_months")
+}
+
+model LatamTurboAccount {
+  id        String @id @default(cuid())
+  team      String
+  cedenteId String @unique
+
+  cpfLimit Int @default(25)
+  cpfUsed  Int @default(0)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation("LatamTurboAccountCedente", fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@index([team])
+  @@map("latam_turbo_accounts")
+}
+
+model LatamPromoListItem {
+  id       String              @id @default(cuid())
+  team     String
+  listDate String
+  status   LatamPromoListStatus @default(PENDING)
+
+  cedenteId String
+  cedente   Cedente @relation("LatamPromoListItemCedente", fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  addedById String?
+  addedBy   User? @relation("LatamPromoListItemAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+
+  reviewedById String?
+  reviewedBy   User? @relation("LatamPromoListItemReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  resolvedAt DateTime?
+  usedAt     DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([team, listDate, cedenteId], name: "team_listDate_cedenteId")
+  @@index([team, listDate, status])
+  @@index([cedenteId])
+  @@index([addedById])
+  @@index([reviewedById])
+  @@map("latam_promo_list_items")
+}
+
+/**
+ * =========================
+ * ✅ DÍVIDAS A RECEBER (EXCLUSIVO)
+ * =========================
+ */
+enum ReceberStatus {
+  OPEN
+  PARTIAL
+  PAID
+  CANCELED
+}
+
+enum ReceberCategoria {
+  EMPRESTIMO
+  CARTAO
+  PARCELAMENTO
+  SERVICO
+  OUTROS
+}
+
+enum ReceberMetodo {
+  PIX
+  CARTAO
+  BOLETO
+  DINHEIRO
+  TRANSFERENCIA
+  OUTRO
+}
+
+model DividaAReceber {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  team String
+
+  debtorName  String
+  debtorDoc   String?
+  debtorPhone String?
+  debtorEmail String?
+
+  title       String
+  description String?
+
+  category ReceberCategoria @default(OUTROS)
+  method   ReceberMetodo @default(PIX)
+
+  totalCents    Int
+  receivedCents Int @default(0)
+
+  dueDate DateTime?
+  status  ReceberStatus @default(OPEN)
+
+  sourceLabel String?
+
+  payments DividaAReceberPagamento[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team, status])
+  @@index([team, dueDate])
+  @@index([ownerId])
+  @@index([createdAt])
+  @@map("dividas_a_receber")
+}
+
+model DividaAReceberPagamento {
+  id String @id @default(cuid())
+
+  dividaId String
+  divida   DividaAReceber @relation(fields: [dividaId], references: [id], onDelete: Cascade)
+
+  amountCents Int
+  method      ReceberMetodo @default(PIX)
+
+  receivedAt DateTime @default(now())
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dividaId])
+  @@index([receivedAt])
+  @@map("dividas_a_receber_pagamentos")
+}
+
+/**
+ * =========================
+ * ✅ AGENDA (SHIFT / ABSENCE) + AUDIT + CORES
+ * =========================
+ */
+enum AgendaEventType {
+  SHIFT
+  ABSENCE
+}
+
+enum AgendaEventStatus {
+  ACTIVE
+  CANCELED
+}
+
+enum AgendaAuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  SWAP
+}
+
+enum AnotacaoStatus {
+  PENDENTE
+  RESOLVIDO
+}
+
+model AgendaEvent {
+  id     String            @id @default(cuid())
+  team   String
+  type   AgendaEventType
+  status AgendaEventStatus @default(ACTIVE)
+
+  // "YYYY-MM-DD" (interno) — exibição DD/MM/AAAA fica no frontend
+  dateISO  String
+  startMin Int
+  endMin   Int
+
+  note String?
+
+  userId String
+  user   User @relation("AgendaEventUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User @relation("AgendaEventCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  canceledAt   DateTime?
+  canceledById String?
+  canceledBy   User? @relation("AgendaEventCanceledBy", fields: [canceledById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  audits AgendaAudit[]
+
+  @@index([team, dateISO])
+  @@index([team, userId, dateISO])
+  @@index([team, status])
+  @@map("agenda_events")
+}
+
+model AgendaAudit {
+  id      String           @id @default(cuid())
+  team    String
+  eventId String
+  event   AgendaEvent      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  action AgendaAuditAction
+
+  actorId String
+  actor   User @relation("AgendaAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  fromUserId   String?
+  toUserId     String?
+  fromStartMin Int?
+  fromEndMin   Int?
+  toStartMin   Int?
+  toEndMin     Int?
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([team, createdAt])
+  @@index([team, eventId])
+  @@index([actorId])
+  @@map("agenda_audits")
+}
+
+model AgendaMemberColor {
+  id     String @id @default(cuid())
+  team   String
+  userId String
+  user   User   @relation("AgendaMemberColorUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  colorHex String // "#RRGGBB"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([team, userId], map: "uniq_agenda_member_color_team_user")
+  @@index([team])
+  @@map("agenda_member_colors")
+}
+
+model Anotacao {
+  id     String         @id @default(cuid())
+  team   String
+  status AnotacaoStatus @default(PENDENTE)
+
+  cedenteId String
+  cedente   Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  texto String
+
+  resolvedAt DateTime?
+
+  createdById String
+  createdBy   User @relation("AnotacaoCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([team, status])
+  @@index([team, resolvedAt])
+  @@index([team, createdAt])
+  @@index([cedenteId])
+  @@map("anotacoes")
+}
