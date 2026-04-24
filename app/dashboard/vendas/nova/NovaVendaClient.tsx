@@ -61,6 +61,7 @@ type UserLite = { id: string; name: string; login: string };
 
 type ClienteTipo = "PESSOA" | "EMPRESA";
 type ClienteOrigem = "BALCAO_MILHAS" | "PARTICULAR" | "SITE" | "OUTROS";
+type PricingMode = "MILHEIRO" | "VALORES";
 
 function clampInt(v: any) {
   const n = Number(v);
@@ -99,6 +100,9 @@ function moneyToCentsBR(input: string) {
   const n = Number(s);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 100);
+}
+function centsToMoneyStr(cents: number) {
+  return ((Number(cents) || 0) / 100).toFixed(2).replace(".", ",");
 }
 function isoToday() {
   const d = new Date();
@@ -416,8 +420,12 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
 
   // campos venda
   const [dateISO, setDateISO] = useState(isoToday());
+  const [pricingMode, setPricingMode] = useState<PricingMode>("MILHEIRO");
   const [milheiroStr, setMilheiroStr] = useState("0,00");
   const [embarqueStr, setEmbarqueStr] = useState("0,00");
+  /** Modo VALORES: valor comercial dos pontos (sem taxa) e total a pagar (pontos + taxa) */
+  const [valorPontosStr, setValorPontosStr] = useState("0,00");
+  const [valorTotalStr, setValorTotalStr] = useState("0,00");
   const [locator, setLocator] = useState("");
   const [purchaseCode, setPurchaseCode] = useState("");
   const [firstPassengerLastName, setFirstPassengerLastName] = useState("");
@@ -425,22 +433,37 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
 
-  const milheiroCents = useMemo(() => moneyToCentsBR(milheiroStr), [milheiroStr]);
   const embarqueFeeCents = useMemo(
     () => moneyToCentsBR(embarqueStr),
     [embarqueStr]
   );
 
-  const pointsValueCents = useMemo(() => {
-    const denom = pointsTotal / 1000;
-    if (denom <= 0) return 0;
-    return Math.round(denom * milheiroCents);
-  }, [pointsTotal, milheiroCents]);
-
-  const totalCents = useMemo(
-    () => pointsValueCents + embarqueFeeCents,
-    [pointsValueCents, embarqueFeeCents]
-  );
+  const { milheiroCents, pointsValueCents, totalCents } = useMemo(() => {
+    if (pricingMode === "MILHEIRO") {
+      const mil = moneyToCentsBR(milheiroStr);
+      const denom = pointsTotal / 1000;
+      const pv = denom > 0 ? Math.round(denom * mil) : 0;
+      return {
+        milheiroCents: mil,
+        pointsValueCents: pv,
+        totalCents: pv + embarqueFeeCents,
+      };
+    }
+    const pv = moneyToCentsBR(valorPontosStr);
+    const mil =
+      pointsTotal > 0 && pv > 0 ? Math.round((pv * 1000) / pointsTotal) : 0;
+    return {
+      milheiroCents: mil,
+      pointsValueCents: pv,
+      totalCents: pv + embarqueFeeCents,
+    };
+  }, [
+    pricingMode,
+    pointsTotal,
+    milheiroStr,
+    valorPontosStr,
+    embarqueFeeCents,
+  ]);
   const commissionCents = useMemo(
     () => Math.round(pointsValueCents * 0.01),
     [pointsValueCents]
@@ -462,6 +485,24 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     const diffTotal = Math.round(denom * diff);
     return Math.round(diffTotal * 0.3);
   }, [milheiroCents, metaMilheiroCents, pointsTotal]);
+
+  function switchPricingMode(next: PricingMode) {
+    if (next === pricingMode) return;
+    const emb = moneyToCentsBR(embarqueStr);
+    if (next === "VALORES") {
+      const denom = pointsTotal / 1000;
+      const mil = moneyToCentsBR(milheiroStr);
+      const pv = denom > 0 ? Math.round(denom * mil) : 0;
+      setValorPontosStr(centsToMoneyStr(pv));
+      setValorTotalStr(centsToMoneyStr(pv + emb));
+    } else {
+      const pv = moneyToCentsBR(valorPontosStr);
+      const mil =
+        pointsTotal > 0 && pv > 0 ? Math.round((pv * 1000) / pointsTotal) : 0;
+      setMilheiroStr(centsToMoneyStr(mil));
+    }
+    setPricingMode(next);
+  }
 
   // ✅ ajuste de PAX disponível (após esta venda) — usando passengersNeeded da sugestão
   const selPaxAfter = useMemo(() => {
@@ -952,7 +993,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     if (!purchaseNumero) return false;
     if (!compraSel) return false;
     if (pointsTotal <= 0 || passengers <= 0) return false;
-    if (milheiroCents <= 0) return false;
+    if (pointsValueCents <= 0 || milheiroCents <= 0) return false;
     if (!locator?.trim()) return false; // ✅ obrigatório
     if (
       (program === "SMILES" || program === "LATAM") &&
@@ -980,6 +1021,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     pointsTotal,
     passengers,
     milheiroCents,
+    pointsValueCents,
     locator,
     purchaseCode,
     program,
@@ -1105,7 +1147,8 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     if (!compraSel) return alert("Compra selecionada inválida.");
     if (pointsTotal <= 0 || passengers <= 0)
       return alert("Pontos/Passageiros inválidos.");
-    if (milheiroCents <= 0) return alert("Milheiro inválido.");
+    if (pointsValueCents <= 0) return alert("Valor dos pontos inválido.");
+    if (milheiroCents <= 0) return alert("Milheiro inválido (verifique pontos e valores).");
     if (!locator?.trim())
       return alert("Informe o localizador (obrigatório).");
     if (
@@ -1142,6 +1185,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
       date: dateISO,
       milheiroCents,
       embarqueFeeCents,
+      ...(pricingMode === "VALORES" ? { pointsValueCents } : {}),
       feeCardLabel: feeCardLabel || null,
       locator: locator?.trim() || null,
       sellerId: effectiveSeller?.id || null,
@@ -2224,25 +2268,135 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
                   )}
                 </label>
 
-                <label className="space-y-1">
-                  <div className="text-xs text-slate-600">Milheiro (R$)</div>
-                  <input
-                    className="w-full rounded-xl border px-3 py-2 text-sm font-mono"
-                    value={milheiroStr}
-                    onChange={(e) => setMilheiroStr(e.target.value)}
-                    placeholder="Ex: 25,50"
-                  />
-                </label>
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="text-xs font-medium text-slate-700">
+                    Precificação da venda
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => switchPricingMode("MILHEIRO")}
+                      className={cn(
+                        "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                        pricingMode === "MILHEIRO"
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      )}
+                    >
+                      Por milheiro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => switchPricingMode("VALORES")}
+                      className={cn(
+                        "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                        pricingMode === "VALORES"
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      )}
+                    >
+                      Por valores totais
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    {pricingMode === "MILHEIRO"
+                      ? "Informe o milheiro; o valor dos pontos é calculado pelos milhas da venda."
+                      : "Informe o valor cobrado pelos pontos, a taxa e o total; o milheiro é calculado de forma reversa."}
+                  </p>
 
-                <label className="space-y-1">
-                  <div className="text-xs text-slate-600">Taxa de embarque (R$)</div>
-                  <input
-                    className="w-full rounded-xl border px-3 py-2 text-sm font-mono"
-                    value={embarqueStr}
-                    onChange={(e) => setEmbarqueStr(e.target.value)}
-                    placeholder="Ex: 78,34"
-                  />
-                </label>
+                  {pricingMode === "MILHEIRO" ? (
+                    <>
+                      <label className="space-y-1 block">
+                        <div className="text-xs text-slate-600">Milheiro (R$)</div>
+                        <input
+                          className="w-full rounded-xl border px-3 py-2 text-sm font-mono bg-white"
+                          value={milheiroStr}
+                          onChange={(e) => setMilheiroStr(e.target.value)}
+                          placeholder="Ex: 25,50"
+                        />
+                      </label>
+                      <label className="space-y-1 block">
+                        <div className="text-xs text-slate-600">
+                          Taxa de embarque (R$)
+                        </div>
+                        <input
+                          className="w-full rounded-xl border px-3 py-2 text-sm font-mono bg-white"
+                          value={embarqueStr}
+                          onChange={(e) => setEmbarqueStr(e.target.value)}
+                          placeholder="Ex: 78,34"
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="space-y-1 block">
+                        <div className="text-xs text-slate-600">
+                          Valor total dos pontos (R$)
+                        </div>
+                        <input
+                          className="w-full rounded-xl border px-3 py-2 text-sm font-mono bg-white"
+                          value={valorPontosStr}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setValorPontosStr(v);
+                            const pc = moneyToCentsBR(v);
+                            const ec = moneyToCentsBR(embarqueStr);
+                            setValorTotalStr(centsToMoneyStr(pc + ec));
+                          }}
+                          placeholder="Ex: 1.500,00"
+                        />
+                      </label>
+                      <label className="space-y-1 block">
+                        <div className="text-xs text-slate-600">
+                          Taxa de embarque (R$)
+                        </div>
+                        <input
+                          className="w-full rounded-xl border px-3 py-2 text-sm font-mono bg-white"
+                          value={embarqueStr}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setEmbarqueStr(v);
+                            const pc = moneyToCentsBR(valorPontosStr);
+                            const ec = moneyToCentsBR(v);
+                            setValorTotalStr(centsToMoneyStr(pc + ec));
+                          }}
+                          placeholder="Ex: 78,34"
+                        />
+                      </label>
+                      <label className="space-y-1 block">
+                        <div className="text-xs text-slate-600">
+                          Total a pagar (R$)
+                        </div>
+                        <input
+                          className="w-full rounded-xl border px-3 py-2 text-sm font-mono bg-white"
+                          value={valorTotalStr}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setValorTotalStr(v);
+                            const tt = moneyToCentsBR(v);
+                            const ec = moneyToCentsBR(embarqueStr);
+                            setValorPontosStr(
+                              centsToMoneyStr(Math.max(0, tt - ec))
+                            );
+                          }}
+                          placeholder="Pontos + taxa"
+                        />
+                      </label>
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                        Milheiro calculado:{" "}
+                        <b className="text-slate-900">
+                          {fmtMoneyBR(milheiroCents)}
+                        </b>
+                        {pointsTotal > 0 ? (
+                          <span className="text-slate-500">
+                            {" "}
+                            ({fmtInt(pointsTotal)} pts)
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <label className="space-y-1">
                   <div className="text-xs text-slate-600">
@@ -2386,6 +2540,11 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
               <div className="flex justify-between">
                 <span className="text-slate-600">PAX</span>
                 <b>{fmtInt(passengers)}</b>
+              </div>
+
+              <div className="flex justify-between text-xs text-slate-600">
+                <span>Milheiro (venda)</span>
+                <b className="tabular-nums">{fmtMoneyBR(milheiroCents)}</b>
               </div>
 
               <div className="h-px bg-slate-200 my-2" />
