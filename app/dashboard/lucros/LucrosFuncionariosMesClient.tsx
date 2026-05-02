@@ -21,7 +21,7 @@ type SummaryRow = {
   balcaoGrossCents: number;
   balcaoCommissionCents: number;
 
-  netNoFeeCents: number; // líquido sem taxa (milhas + comissão balcão 60%)
+  netNoFeeCents: number; // líquido sem taxa (milhas + comissão balcão por % do funcionário)
   netWithFeeCents: number; // gross - tax + fee
 };
 
@@ -392,7 +392,7 @@ export default function LucrosFuncionariosMesClient() {
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">Funcionários — análise do mês</h2>
           <p className="text-sm text-neutral-500">
-            Baseado nos dias <b>computados</b> em Comissões → Funcionários + <b>comissão de Emissões no balcão (60%)</b>.
+            Baseado nos dias <b>computados</b> em Comissões → Funcionários + <b>comissão de Emissões no balcão</b> (% configurado por funcionário na operação).
             <b> Líquido aqui é SEM taxa de embarque</b>.
           </p>
         </div>
@@ -424,7 +424,7 @@ export default function LucrosFuncionariosMesClient() {
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-7">
         <KPI label="Líquido total (sem taxa)" value={fmtMoneyBR(data?.totals.netNoFee || 0)} />
-        <KPI label="Comissão balcão (60%)" value={fmtMoneyBR(data?.totals.balcaoCommission || 0)} />
+        <KPI label="Comissão balcão" value={fmtMoneyBR(data?.totals.balcaoCommission || 0)} />
         <KPI label="Imposto total (milhas + balcão)" value={fmtMoneyBR(data?.totals.tax || 0)} />
         <KPI label="Taxas (reembolso)" value={fmtMoneyBR(data?.totals.fee || 0)} />
         <KPI label="Bruto (C1+C2+C3)" value={fmtMoneyBR(data?.totals.gross || 0)} />
@@ -456,7 +456,7 @@ export default function LucrosFuncionariosMesClient() {
                 <th className="px-4 py-3">C3 (rateio)</th>
                 <th className="px-4 py-3">Imposto</th>
                 <th className="px-4 py-3">Taxa embarque</th>
-                <th className="px-4 py-3">Balcão (60%)</th>
+                <th className="px-4 py-3">Balcão</th>
                 <th className="px-4 py-3">Líquido total (sem taxa)</th>
               </tr>
             </thead>

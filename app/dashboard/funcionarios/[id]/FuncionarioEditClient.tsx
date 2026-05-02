@@ -12,6 +12,8 @@ type FuncItem = {
   role: string;
   inviteCode: string | null;
   createdAt: string;
+  balcaoSellerCommissionPercent?: number | null;
+  balcaoSellerCommissionPercentEffective?: number;
   _count?: { cedentes: number };
 };
 
@@ -49,6 +51,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   const [employeeId, setEmployeeId] = useState("");
   const [cpf, setCpf] = useState("");
   const [login, setLogin] = useState("");
+  const [balcaoCommissionPercent, setBalcaoCommissionPercent] = useState("");
 
   // troca de senha
   const [oldPassword, setOldPassword] = useState("");
@@ -70,6 +73,9 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setEmployeeId(u.employeeId || "");
       setCpf(u.cpf || "");
       setLogin(u.login || "");
+      setBalcaoCommissionPercent(
+        u.balcaoSellerCommissionPercent == null ? "" : String(u.balcaoSellerCommissionPercent)
+      );
     } catch (e: any) {
       setMsg(e?.message || "Erro");
     } finally {
@@ -92,16 +98,28 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setSaving(true);
       setMsg("");
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: name.trim(),
         employeeId: slugifyId(employeeId),
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
       };
 
+      const pctRaw = balcaoCommissionPercent.trim();
+      payload.balcaoSellerCommissionPercent = pctRaw === "" ? null : Number(pctRaw.replace(",", "."));
+
       if (!payload.name) throw new Error("Nome obrigatório.");
       if (!payload.employeeId) throw new Error("ID obrigatório (ex: eduarda.freitas).");
       if (!payload.login) throw new Error("Login obrigatório.");
+
+      if (
+        payload.balcaoSellerCommissionPercent !== null &&
+        (!Number.isFinite(payload.balcaoSellerCommissionPercent as number) ||
+          (payload.balcaoSellerCommissionPercent as number) < 0 ||
+          (payload.balcaoSellerCommissionPercent as number) > 100)
+      ) {
+        throw new Error("Comissão balcão: informe um percentual entre 0 e 100, ou deixe em branco para o padrão (60%).");
+      }
 
       const res = await fetch(`/api/funcionarios/${item.id}`, {
         method: "PATCH",
@@ -213,6 +231,24 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
           <div>
             <label className="block text-sm mb-1">Login</label>
             <input className="w-full rounded-xl border px-3 py-2" value={login} onChange={(e) => setLogin(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="block text-sm mb-1">Comissão em vendas balcão (% do lucro líquido após imposto)</label>
+            <input
+              className="w-full rounded-xl border px-3 py-2"
+              inputMode="decimal"
+              placeholder="Vazio = padrão 60%"
+              value={balcaoCommissionPercent}
+              onChange={(e) => setBalcaoCommissionPercent(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Valor atual efetivo:{" "}
+              <span className="font-semibold">
+                {item.balcaoSellerCommissionPercentEffective ?? 60}%
+              </span>
+              . Operações já lançadas mantêm o percentual gravado na emissão.
+            </p>
           </div>
 
           <div>

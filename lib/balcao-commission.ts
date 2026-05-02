@@ -63,9 +63,18 @@ export function netProfitAfterTaxCents(profitCents: number, taxCents: number) {
   return Number(profitCents || 0) - Number(taxCents || 0);
 }
 
-export function sellerCommissionCentsFromNet(netProfitCents: number) {
-  return Math.round(
-    Math.max(0, Number(netProfitCents || 0)) *
-      (BALCAO_SELLER_COMMISSION_PERCENT / 100)
-  );
+/** Percentual efetivo: null/undefined (ou não finito) → padrão global. Clamp 0–100. */
+export function resolveBalcaoSellerCommissionPercent(stored: number | null | undefined) {
+  if (stored == null || !Number.isFinite(Number(stored))) {
+    return BALCAO_SELLER_COMMISSION_PERCENT;
+  }
+  return Math.max(0, Math.min(100, Math.round(Number(stored))));
+}
+
+export function sellerCommissionCentsFromNet(
+  netProfitCents: number,
+  storedSellerPercent?: number | null
+) {
+  const pct = resolveBalcaoSellerCommissionPercent(storedSellerPercent);
+  return Math.round(Math.max(0, Number(netProfitCents || 0)) * (pct / 100));
 }

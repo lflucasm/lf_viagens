@@ -1,6 +1,7 @@
 "use client";
 
 import { Dispatch, FormEvent, SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+import { resolveBalcaoSellerCommissionPercent } from "@/lib/balcao-commission";
 
 type Airline =
   | "LATAM"
@@ -24,6 +25,7 @@ type EmployeeOption = {
   id: string;
   name: string;
   login: string;
+  balcaoSellerCommissionPercent: number | null;
 };
 
 type Row = {
@@ -39,6 +41,7 @@ type Row = {
   taxPercent: number;
   taxCents: number;
   netProfitCents: number;
+  sellerCommissionPercent: number;
   sellerCommissionCents: number;
   locator: string | null;
   note: string | null;
@@ -89,6 +92,7 @@ type FuncionarioApiItem = {
   name?: unknown;
   login?: unknown;
   team?: unknown;
+  balcaoSellerCommissionPercent?: unknown;
 };
 
 const AIRLINES: Array<{ value: Airline; label: string }> = [
@@ -252,9 +256,18 @@ export default function CompraVendaClient() {
     () => previewProfitCents - previewTaxCents,
     [previewProfitCents, previewTaxCents]
   );
+
+  const previewSellerPercentEffective = useMemo(() => {
+    const emp = funcionarios.find((f) => f.id === form.employeeId);
+    return resolveBalcaoSellerCommissionPercent(emp?.balcaoSellerCommissionPercent ?? null);
+  }, [funcionarios, form.employeeId]);
+
   const previewSellerCommissionCents = useMemo(
-    () => Math.round(Math.max(0, previewNetProfitCents) * 0.6),
-    [previewNetProfitCents]
+    () =>
+      Math.round(
+        Math.max(0, previewNetProfitCents) * (previewSellerPercentEffective / 100)
+      ),
+    [previewNetProfitCents, previewSellerPercentEffective]
   );
 
   const loadRows = useCallback(async (search = "") => {
@@ -328,6 +341,11 @@ export default function CompraVendaClient() {
               id: String(u?.id || ""),
               name: String(u?.name || ""),
               login: String(u?.login || ""),
+              balcaoSellerCommissionPercent:
+                u?.balcaoSellerCommissionPercent == null ||
+                !Number.isFinite(Number(u.balcaoSellerCommissionPercent))
+                  ? null
+                  : Math.round(Number(u.balcaoSellerCommissionPercent)),
             }))
             .filter((u: EmployeeOption) => u.id && u.name)
             .sort((a: EmployeeOption, b: EmployeeOption) =>
@@ -607,7 +625,7 @@ export default function CompraVendaClient() {
           <div className="text-lg font-semibold text-emerald-700">{formatMoney(resumo.totalNetProfitCents)}</div>
         </div>
         <div className="rounded border border-zinc-200 bg-white p-3">
-          <div className="text-xs text-zinc-500">Comissão vendedor (60%)</div>
+          <div className="text-xs text-zinc-500">Comissão vendedor (balcão)</div>
           <div className="text-lg font-semibold text-blue-700">
             {formatMoney(resumo.totalSellerCommissionCents)}
           </div>
@@ -803,7 +821,7 @@ export default function CompraVendaClient() {
             <div className="font-semibold text-emerald-700">{formatMoney(previewNetProfitCents)}</div>
           </div>
           <div className="rounded border border-zinc-200 bg-zinc-50 p-3">
-            <div className="text-xs text-zinc-500">Comissão vendedor (60%)</div>
+            <div className="text-xs text-zinc-500">{`Comissão vendedor (${previewSellerPercentEffective}%)`}</div>
             <div className="font-semibold text-blue-700">{formatMoney(previewSellerCommissionCents)}</div>
           </div>
         </div>
@@ -840,7 +858,7 @@ export default function CompraVendaClient() {
               <th className="p-3">Lucro (sem taxa)</th>
               <th className="p-3">Imposto</th>
               <th className="p-3">Lucro líquido</th>
-              <th className="p-3">Comissão vendedor</th>
+              <th className="p-3">Comissão vendedor (%)</th>
               <th className="p-3">Localizador</th>
               <th className="p-3">Funcionário</th>
             </tr>
@@ -901,7 +919,8 @@ export default function CompraVendaClient() {
                     {formatMoney(row.netProfitCents)}
                   </td>
                   <td className="p-3 whitespace-nowrap font-semibold text-blue-700">
-                    {formatMoney(row.sellerCommissionCents)}
+                    <div>{formatMoney(row.sellerCommissionCents)}</div>
+                    <div className="text-xs font-normal text-zinc-500">{row.sellerCommissionPercent}%</div>
                   </td>
                   <td className="p-3 whitespace-nowrap font-medium">{row.locator || "—"}</td>
 

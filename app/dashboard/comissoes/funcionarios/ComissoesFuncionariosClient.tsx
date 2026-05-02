@@ -725,7 +725,7 @@ export default function ComissoesFuncionariosClient() {
           value={fmtMoneyBR(day?.totals.tax || 0)}
         />
         <KPI label="Taxas (reembolso)" value={fmtMoneyBR(day?.totals.fee || 0)} />
-        <KPI label="Comissão balcão (60%)" value={fmtMoneyBR(dayExtra.balcaoCommission)} />
+        <KPI label="Comissão balcão" value={fmtMoneyBR(dayExtra.balcaoCommission)} />
         <KPI label="Líquido total (a pagar)" value={fmtMoneyBR(dayExtra.liquidoTotal)} />
         <KPI label="Lucro (sem taxa embarque)" value={fmtMoneyBR(dayExtra.lucroSemTaxa)} />
         <KPI label="Pago" value={fmtMoneyBR(dayExtra.pago)} />
@@ -935,7 +935,7 @@ export default function ComissoesFuncionariosClient() {
       </div>
 
       <p className="text-xs text-neutral-500">
-        Nota: Bruto = C1+C2+C3. <b>Comissão balcão</b> = 60% do lucro líquido do balcão (já com imposto do balcão).
+        Nota: Bruto = C1+C2+C3. <b>Comissão balcão</b> = percentual do lucro líquido do balcão (após imposto), conforme cada emissão; o padrão é 60% se não houver configuração no funcionário.
         <b> Lucro s/ taxa</b> = bruto − imposto + comissão balcão. <b>Líquido</b> = netPay + comissão balcão
         (netPay já inclui reembolso da taxa de vendas).
       </p>

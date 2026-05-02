@@ -50,6 +50,7 @@ export async function GET() {
         name: true,
         cpf: true,
         employeeId: true, // ✅
+        balcaoSellerCommissionPercent: true,
         role: true,
         team: true,
         createdAt: true,
@@ -64,6 +65,7 @@ export async function GET() {
       login: u.login,
       cpf: u.cpf,
       employeeId: u.employeeId ?? null,
+      balcaoSellerCommissionPercent: u.balcaoSellerCommissionPercent ?? null,
       team: u.team,
       role: u.role,
       createdAt: u.createdAt,

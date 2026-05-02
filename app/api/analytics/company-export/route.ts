@@ -430,6 +430,7 @@ function makeBalcaoComputed(op: {
   customerChargeCents: number;
   supplierPayCents: number;
   boardingFeeCents: number;
+  sellerCommissionPercent?: number | null;
 }, taxRule: ReturnType<typeof buildTaxRule>): BalcaoComputed {
   const profitCents = balcaoProfitSemTaxaCents({
     customerChargeCents: safeInt(op.customerChargeCents, 0),
@@ -443,7 +444,10 @@ function makeBalcaoComputed(op: {
     profitCents,
     taxCents,
     netProfitCents,
-    sellerCommissionCents: sellerCommissionCentsFromNet(netProfitCents),
+    sellerCommissionCents: sellerCommissionCentsFromNet(
+      netProfitCents,
+      op.sellerCommissionPercent
+    ),
     taxPercent,
   };
 }
@@ -516,6 +520,7 @@ export async function GET() {
           supplierPayCents: true,
           customerChargeCents: true,
           profitCents: true,
+          sellerCommissionPercent: true,
           locator: true,
           note: true,
           createdAt: true,
@@ -681,6 +686,7 @@ export async function GET() {
           customerChargeCents: op.customerChargeCents,
           supplierPayCents: op.supplierPayCents,
           boardingFeeCents: op.boardingFeeCents,
+          sellerCommissionPercent: op.sellerCommissionPercent,
         },
         taxRule
       );

@@ -205,6 +205,7 @@ export async function GET(req: Request) {
         customerChargeCents: true,
         supplierPayCents: true,
         boardingFeeCents: true,
+        sellerCommissionPercent: true,
       },
     });
 
@@ -226,7 +227,10 @@ export async function GET(req: Request) {
       });
       const opTaxCents = taxFromProfitCents(opProfitCents, opTaxPercent);
       const opNetCents = netProfitAfterTaxCents(opProfitCents, opTaxCents);
-      const opCommissionCents = sellerCommissionCentsFromNet(opNetCents);
+      const opCommissionCents = sellerCommissionCentsFromNet(
+        opNetCents,
+        op.sellerCommissionPercent
+      );
 
       return acc + opCommissionCents;
     }, 0);

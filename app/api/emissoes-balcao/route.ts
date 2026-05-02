@@ -10,6 +10,7 @@ import {
   buildTaxRule,
   recifeDateISO,
   resolveTaxPercent,
+  resolveBalcaoSellerCommissionPercent,
   sellerCommissionCentsFromNet,
   taxFromProfitCents,
   netProfitAfterTaxCents,
@@ -86,6 +87,7 @@ function toRow(item: {
   supplierCliente: { id: string; identificador: string; nome: string };
   finalCliente: { id: string; identificador: string; nome: string };
   employee: { id: string; name: string; login: string } | null;
+  sellerCommissionPercent: number | null;
 }, rule: BalcaoTaxRule) {
   const normalizedProfitCents = balcaoProfitSemTaxaCents({
     customerChargeCents: item.customerChargeCents,
@@ -96,7 +98,13 @@ function toRow(item: {
   const taxPercent = resolveTaxPercent(dateISO, rule);
   const taxCents = taxFromProfitCents(normalizedProfitCents, taxPercent);
   const netProfitCents = netProfitAfterTaxCents(normalizedProfitCents, taxCents);
-  const sellerCommissionCents = sellerCommissionCentsFromNet(netProfitCents);
+  const sellerCommissionCents = sellerCommissionCentsFromNet(
+    netProfitCents,
+    item.sellerCommissionPercent
+  );
+  const sellerCommissionPercentEffective = resolveBalcaoSellerCommissionPercent(
+    item.sellerCommissionPercent
+  );
 
   return {
     id: item.id,
@@ -111,6 +119,7 @@ function toRow(item: {
     taxPercent,
     taxCents,
     netProfitCents,
+    sellerCommissionPercent: sellerCommissionPercentEffective,
     sellerCommissionCents,
     locator: item.locator,
     note: item.note,
@@ -165,6 +174,7 @@ export async function GET(req: NextRequest) {
         supplierPayCents: true,
         customerChargeCents: true,
         profitCents: true,
+        sellerCommissionPercent: true,
         locator: true,
         note: true,
         createdAt: true,
@@ -275,12 +285,16 @@ export async function POST(req: NextRequest) {
     const employeeId = employeeIdRaw || session.id;
     const employee = await prisma.user.findFirst({
       where: { id: employeeId, team },
-      select: { id: true },
+      select: { id: true, balcaoSellerCommissionPercent: true },
     });
 
     if (!employee) {
       return bad("Funcionário inválido para o time atual.");
     }
+
+    const sellerCommissionPercent = resolveBalcaoSellerCommissionPercent(
+      employee.balcaoSellerCommissionPercent
+    );
 
     const supplierPayCents = Math.round((points * buyRateCents) / 1000);
     const customerChargeCents = Math.round((points * sellRateCents) / 1000) + boardingFeeCents;
@@ -292,6 +306,7 @@ export async function POST(req: NextRequest) {
         supplierClienteId,
         finalClienteId,
         employeeId: employee.id,
+        sellerCommissionPercent,
         airline: airlineRaw,
         points,
         buyRateCents,
@@ -313,6 +328,7 @@ export async function POST(req: NextRequest) {
         supplierPayCents: true,
         customerChargeCents: true,
         profitCents: true,
+        sellerCommissionPercent: true,
         locator: true,
         note: true,
         createdAt: true,

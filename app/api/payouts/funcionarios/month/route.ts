@@ -64,6 +64,7 @@ export async function GET(req: Request) {
         customerChargeCents: true,
         supplierPayCents: true,
         boardingFeeCents: true,
+        sellerCommissionPercent: true,
       },
     });
 
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
       });
       const taxCents = taxFromProfitCents(profitCents, percent);
       const netCents = netProfitAfterTaxCents(profitCents, taxCents);
-      const commissionCents = sellerCommissionCentsFromNet(netCents);
+      const commissionCents = sellerCommissionCentsFromNet(netCents, op.sellerCommissionPercent);
       balcaoByDate.set(dateISO, (balcaoByDate.get(dateISO) || 0) + commissionCents);
     }
 

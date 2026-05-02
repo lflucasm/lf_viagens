@@ -113,6 +113,7 @@ export async function GET(req: Request) {
         customerChargeCents: true,
         supplierPayCents: true,
         boardingFeeCents: true,
+        sellerCommissionPercent: true,
       },
     });
 
@@ -206,7 +207,10 @@ export async function GET(req: Request) {
       );
       const opTax = safeInt(taxFromProfitCents(opGross, taxPercent), 0);
       const opNetNoFee = safeInt(netProfitAfterTaxCents(opGross, opTax), 0);
-      const opCommission = safeInt(sellerCommissionCentsFromNet(opNetNoFee), 0);
+      const opCommission = safeInt(
+        sellerCommissionCentsFromNet(opNetNoFee, op.sellerCommissionPercent),
+        0
+      );
 
       a.balcaoOps += 1;
       a.balcaoGross += opGross;

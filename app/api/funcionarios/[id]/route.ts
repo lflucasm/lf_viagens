@@ -1,6 +1,7 @@
 // app/api/funcionarios/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolveBalcaoSellerCommissionPercent } from "@/lib/balcao-commission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       name: true,
       cpf: true,
       employeeId: true,
+      balcaoSellerCommissionPercent: true,
       role: true,
       team: true,
       createdAt: true,
@@ -61,6 +63,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         login: u.login,
         cpf: u.cpf,
         employeeId: u.employeeId ?? null,
+        balcaoSellerCommissionPercent: u.balcaoSellerCommissionPercent ?? null,
+        balcaoSellerCommissionPercentEffective: resolveBalcaoSellerCommissionPercent(
+          u.balcaoSellerCommissionPercent
+        ),
         team: u.team,
         role: u.role,
         createdAt: u.createdAt,
@@ -82,6 +88,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const employeeIdRaw = typeof body?.employeeId === "string" ? body.employeeId.trim() : "";
   const employeeId = slugifyId(employeeIdRaw);
 
+  let balcaoSellerCommissionPercent: number | null | undefined = undefined;
+  if ("balcaoSellerCommissionPercent" in body) {
+    const raw = body?.balcaoSellerCommissionPercent;
+    if (raw === null || raw === "") {
+      balcaoSellerCommissionPercent = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        return NextResponse.json(
+          { ok: false, error: "Percentual de comissão balcão inválido." },
+          { status: 400, headers: noCacheHeaders() }
+        );
+      }
+      balcaoSellerCommissionPercent = Math.max(0, Math.min(100, Math.round(n)));
+    }
+  }
+
   if (!name || !login || !employeeId) {
     return NextResponse.json({ ok: false, error: "Nome, login e ID são obrigatórios." }, { status: 400, headers: noCacheHeaders() });
   }
@@ -94,6 +117,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         login,
         cpf: cpf ? cpf : null,
         employeeId,
+        ...(balcaoSellerCommissionPercent !== undefined
+          ? { balcaoSellerCommissionPercent }
+          : {}),
       },
       select: {
         id: true,
@@ -101,6 +127,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         login: true,
         cpf: true,
         employeeId: true,
+        balcaoSellerCommissionPercent: true,
         team: true,
         role: true,
         createdAt: true,
@@ -117,6 +144,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           login: updated.login,
           cpf: updated.cpf,
           employeeId: updated.employeeId ?? null,
+          balcaoSellerCommissionPercent: updated.balcaoSellerCommissionPercent ?? null,
+          balcaoSellerCommissionPercentEffective: resolveBalcaoSellerCommissionPercent(
+            updated.balcaoSellerCommissionPercent
+          ),
           team: updated.team,
           role: updated.role,
           createdAt: updated.createdAt,

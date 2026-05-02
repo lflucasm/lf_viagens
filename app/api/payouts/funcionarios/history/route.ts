@@ -71,6 +71,7 @@ export async function GET() {
         customerChargeCents: true,
         supplierPayCents: true,
         boardingFeeCents: true,
+        sellerCommissionPercent: true,
       },
     });
 
@@ -122,7 +123,10 @@ export async function GET() {
       );
       const opTax = safeInt(taxFromProfitCents(opGross, taxPercent), 0);
       const opNetNoFee = safeInt(netProfitAfterTaxCents(opGross, opTax), 0);
-      const opCommission = safeInt(sellerCommissionCentsFromNet(opNetNoFee), 0);
+      const opCommission = safeInt(
+        sellerCommissionCentsFromNet(opNetNoFee, op.sellerCommissionPercent),
+        0
+      );
 
       const bucket = ensure(userId, month);
       bucket.balcaoCommission += opCommission;
