@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Mantido simples para compatibilidade com build da Vercel
+  async redirects() {
+    return [{ source: "/", destination: "/login", permanent: false }];
+  },
 };
 
 export default nextConfig;
