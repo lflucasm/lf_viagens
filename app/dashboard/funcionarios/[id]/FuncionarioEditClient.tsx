@@ -173,8 +173,8 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       const res = await fetch(`/api/funcionarios/${item.id}`, { method: "DELETE", cache: "no-store" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Não foi possível excluir.");
-      router.push("/dashboard/funcionarios");
-      router.refresh();
+      // Navegação completa evita lista em cache no cliente / transição suave que não remonta.
+      window.location.assign("/dashboard/funcionarios");
     } catch (e: any) {
       setMsg(e?.message || "Erro ao excluir.");
     } finally {

@@ -570,26 +570,29 @@ export default function Sidebar() {
         </div>
       )}
 
-      <nav className="flex-1 overflow-y-auto space-y-2 px-2 py-4">
+      {/* Fora do nav rolável: sempre visível (não some no scroll) */}
+      <div className="shrink-0 px-2 pt-3">
         <Link
           href="/dashboard"
           className={cn(
-            "flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+            "flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold shadow-sm transition-colors",
             pathname === "/dashboard"
-              ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200/90"
-              : "text-slate-800 hover:bg-slate-100"
+              ? "border-sky-300 bg-sky-100 text-sky-950 ring-2 ring-sky-400/40"
+              : "border-slate-200 bg-white text-slate-800 hover:border-sky-200 hover:bg-sky-50/80"
           )}
         >
           <span
             className={cn(
               "h-2 w-2 shrink-0 rounded-full",
-              pathname === "/dashboard" ? "bg-sky-500" : "bg-slate-400"
+              pathname === "/dashboard" ? "bg-sky-600" : "bg-sky-500"
             )}
             aria-hidden
           />
           Página inicial
         </Link>
+      </div>
 
+      <nav className="min-h-0 flex-1 overflow-y-auto space-y-2 px-2 py-3">
         {/* ================= CADASTRO ================= */}
         <Accordion
           title="Cadastro"

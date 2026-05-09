@@ -32,7 +32,10 @@ export default function FuncionariosPage() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch("/api/funcionarios", { cache: "no-store" });
+      const res = await fetch(`/api/funcionarios?_=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      });
       const json = await res.json();
       if (!json?.ok) throw new Error(json?.error || "Falha ao carregar.");
       setItems(json.data || []);
