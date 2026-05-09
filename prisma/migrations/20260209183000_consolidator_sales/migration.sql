@@ -28,7 +28,7 @@ CREATE INDEX "consolidator_sales_team_status_idx" ON "consolidator_sales"("team"
 CREATE INDEX "consolidator_sales_team_createdAt_idx" ON "consolidator_sales"("team", "createdAt");
 
 -- AddForeignKey
-ALTER TABLE "consolidator_sales" ADD CONSTRAINT "consolidator_sales_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "consolidator_sales" ADD CONSTRAINT "consolidator_sales_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "consolidator_sales" ADD CONSTRAINT "consolidator_sales_releasedById_fkey" FOREIGN KEY ("releasedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "consolidator_sales" ADD CONSTRAINT "consolidator_sales_releasedById_fkey" FOREIGN KEY ("releasedById") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
