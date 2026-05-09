@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import type { LoyaltyProgram, Settings } from "@prisma/client";
 
+/** Subconjunto de Settings usado só para custo milheiro por programa (compras sem custo no DB). */
+export type SettingsMilheiroRates = Pick<
+  Settings,
+  "latamRateCents" | "smilesRateCents" | "liveloRateCents" | "esferaRateCents"
+>;
+
 type SessionLike = { userId: string; team: string; role?: string };
 
 const TZ_OFFSET = "-03:00"; // Recife
@@ -31,7 +37,7 @@ function tax8(cents: number) {
   return Math.round((cents ?? 0) * 0.08);
 }
 
-function costFromSettings(program: LoyaltyProgram, settings: Settings | null) {
+function costFromSettings(program: LoyaltyProgram, settings: SettingsMilheiroRates | null) {
   if (!settings) {
     if (program === "LATAM") return 2000;
     if (program === "SMILES") return 1800;
@@ -159,7 +165,11 @@ export function chooseC2(
   return 0;
 }
 
-export function chooseCostMilheiro(program: LoyaltyProgram, costDb: number, settings: Settings | null) {
+export function chooseCostMilheiro(
+  program: LoyaltyProgram,
+  costDb: number,
+  settings: SettingsMilheiroRates | null
+) {
   if ((costDb ?? 0) > 0) return costDb;
   return costFromSettings(program, settings);
 }
@@ -189,7 +199,7 @@ export function milheiroLucroVendaCents(args: {
   pvNoFeeCents: number;
   program: LoyaltyProgram;
   purchaseCostMilheiroCents: number;
-  settings: Settings | null;
+  settings: SettingsMilheiroRates | null;
 }) {
   const costMilheiro = chooseCostMilheiro(
     args.program,
