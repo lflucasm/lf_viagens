@@ -2,11 +2,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { EmployeeCommissionMode } from "@prisma/client";
 import {
   chooseC1,
   chooseC2,
   chooseMetaMilheiro,
   choosePvNoFee,
+  milheiroLucroVendaCents,
   milheiroNoFeeFromPv,
 } from "@/lib/payouts/employeePayouts";
 
@@ -278,13 +280,18 @@ export async function GET(req: NextRequest) {
 
   const membersRaw = await prisma.user.findMany({
     where: { team: session.team, role: { in: ["admin", "staff"] } },
-    select: { id: true, name: true, login: true },
+    select: { id: true, name: true, login: true, employeeCommissionMode: true },
   });
   const members: TeamMemberLite[] = membersRaw.map((u) => ({
     id: String(u.id),
     nameNorm: norm(String(u.name || "")),
     loginNorm: normLogin(String(u.login || "")),
   }));
+  const commissionModeByUserId = new Map(
+    membersRaw.map((u) => [String(u.id), u.employeeCommissionMode] as const)
+  );
+
+  const settings = await prisma.settings.findFirst({});
 
   const sales = await prisma.sale.findMany({
     where: {
@@ -297,6 +304,7 @@ export async function GET(req: NextRequest) {
       date: true,
       numero: true,
       locator: true,
+      program: true,
       points: true,
       milheiroCents: true,
       pointsValueCents: true,
@@ -314,6 +322,7 @@ export async function GET(req: NextRequest) {
           id: true,
           numero: true,
           metaMilheiroCents: true,
+          custoMilheiroCents: true,
         },
       },
     },
@@ -344,8 +353,28 @@ export async function GET(req: NextRequest) {
         : safeInt(s.purchase?.metaMilheiroCents, 0)
     );
 
-    const c1 = isSeller ? chooseC1(points, safeInt(s.commissionCents, 0), pvNoFee) : 0;
-    const c2 = isSeller ? chooseC2(points, safeInt(s.bonusCents, 0), milheiroNoFee, meta) : 0;
+    const sellerMode = s.sellerId
+      ? commissionModeByUserId.get(String(s.sellerId))
+      : undefined;
+
+    let c1 = 0;
+    let c2 = 0;
+    let milheiroLucroCents = 0;
+
+    if (isSeller) {
+      if (sellerMode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA) {
+        milheiroLucroCents = milheiroLucroVendaCents({
+          points,
+          pvNoFeeCents: pvNoFee,
+          program: s.program,
+          purchaseCostMilheiroCents: safeInt(s.purchase?.custoMilheiroCents, 0),
+          settings: settings ?? null,
+        });
+      } else {
+        c1 = chooseC1(points, safeInt(s.commissionCents, 0), pvNoFee);
+        c2 = chooseC2(points, safeInt(s.bonusCents, 0), milheiroNoFee, meta);
+      }
+    }
 
     return {
       ref: { type: "sale", id: s.id },
@@ -379,6 +408,7 @@ export async function GET(req: NextRequest) {
       pointsValueCents: pvNoFee,
       c1Cents: c1,
       c2Cents: c2,
+      milheiroLucroVendaCents: milheiroLucroCents,
       c3Cents: 0, // ⚠️ C3 depende da sua regra real
       feeCents: isFeePayer ? fee : 0,
       saleFeeCents: fee,
@@ -390,7 +420,8 @@ export async function GET(req: NextRequest) {
 
     const sum = lines.reduce(
       (acc, it) => {
-        acc.gross += it.c1Cents + it.c2Cents + it.c3Cents;
+        acc.gross +=
+          it.c1Cents + it.c2Cents + it.c3Cents + safeInt(it.milheiroLucroVendaCents, 0);
         acc.fee += it.feeCents;
         return acc;
       },
@@ -437,7 +468,8 @@ export async function GET(req: NextRequest) {
     .map(([d, items]) => {
       const sums = items.reduce(
         (acc, it) => {
-          acc.gross += it.c1Cents + it.c2Cents + it.c3Cents;
+          acc.gross +=
+            it.c1Cents + it.c2Cents + it.c3Cents + safeInt(it.milheiroLucroVendaCents, 0);
           acc.fee += it.feeCents;
           acc.salesCount += 1;
           return acc;

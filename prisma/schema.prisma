@@ -50,6 +50,12 @@ enum LoyaltyProgram {
   ESFERA
 }
 
+/// Comissão sobre vendas de milhas: padrão (C1+C2+rateio) ou só lucro por venda (milheiro venda − custo compra).
+enum EmployeeCommissionMode {
+  STANDARD
+  MILHEIRO_LUCRO_VENDA
+}
+
 enum BlockStatus {
   OPEN
   UNBLOCKED
@@ -124,6 +130,8 @@ model User {
 
   /// % do lucro líquido do balcão (após imposto) para comissão do vendedor. Null = usar padrão global (60%).
   balcaoSellerCommissionPercent Int?
+
+  employeeCommissionMode EmployeeCommissionMode @default(STANDARD)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

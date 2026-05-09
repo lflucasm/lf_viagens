@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { EmployeeCommissionMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import {
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
     const [users, payouts, settings] = await Promise.all([
       prisma.user.findMany({
         where: { team },
-        select: { id: true, name: true, login: true, role: true },
+        select: { id: true, name: true, login: true, role: true, employeeCommissionMode: true },
         orderBy: { name: "asc" },
       }),
       prisma.employeePayout.findMany({
@@ -126,6 +127,7 @@ export async function GET(req: Request) {
         c1: number;
         c2: number;
         c3: number;
+        milheiroLucroVendaCents: number;
 
         gross: number;
         payoutTax: number;
@@ -148,6 +150,7 @@ export async function GET(req: Request) {
         c1: 0,
         c2: 0,
         c3: 0,
+        milheiroLucroVendaCents: 0,
         gross: 0,
         payoutTax: 0,
         fee: 0,
@@ -167,6 +170,7 @@ export async function GET(req: Request) {
         commission1Cents?: number;
         commission2Cents?: number;
         commission3RateioCents?: number;
+        milheiroLucroVendaCents?: number;
       };
 
       const gross = safeInt(p.grossProfitCents, 0);
@@ -181,6 +185,7 @@ export async function GET(req: Request) {
       a.c1 += safeInt(b.commission1Cents, 0);
       a.c2 += safeInt(b.commission2Cents, 0);
       a.c3 += safeInt(b.commission3RateioCents, 0);
+      a.milheiroLucroVendaCents += safeInt(b.milheiroLucroVendaCents, 0);
 
       a.gross += gross;
       a.payoutTax += tax;
@@ -207,10 +212,14 @@ export async function GET(req: Request) {
       );
       const opTax = safeInt(taxFromProfitCents(opGross, taxPercent), 0);
       const opNetNoFee = safeInt(netProfitAfterTaxCents(opGross, opTax), 0);
-      const opCommission = safeInt(
+      let opCommission = safeInt(
         sellerCommissionCentsFromNet(opNetNoFee, op.sellerCommissionPercent),
         0
       );
+      const u = users.find((x) => x.id === userId);
+      if (u?.employeeCommissionMode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA) {
+        opCommission = 0;
+      }
 
       a.balcaoOps += 1;
       a.balcaoGross += opGross;
@@ -227,6 +236,7 @@ export async function GET(req: Request) {
           c1: 0,
           c2: 0,
           c3: 0,
+          milheiroLucroVendaCents: 0,
           gross: 0,
           payoutTax: 0,
           fee: 0,
@@ -239,13 +249,20 @@ export async function GET(req: Request) {
         } as const);
 
       return {
-        user: { id: u.id, name: u.name, login: u.login, role: u.role },
+        user: {
+          id: u.id,
+          name: u.name,
+          login: u.login,
+          role: u.role,
+          employeeCommissionMode: u.employeeCommissionMode,
+        },
         days: a.days,
         salesCount: a.salesCount,
 
         commission1Cents: a.c1,
         commission2Cents: a.c2,
         commission3RateioCents: a.c3,
+        milheiroLucroVendaCents: a.milheiroLucroVendaCents,
 
         grossCents: a.gross,
         taxCents: a.payoutTax + a.balcaoTax,
@@ -269,6 +286,7 @@ export async function GET(req: Request) {
         acc.c1 += r.commission1Cents;
         acc.c2 += r.commission2Cents;
         acc.c3 += r.commission3RateioCents;
+        acc.milheiroLucroVendaCents += safeInt(r.milheiroLucroVendaCents, 0);
         acc.gross += r.grossCents;
         acc.tax += r.taxCents;
         acc.payoutTax += r.payoutTaxCents;
@@ -287,6 +305,7 @@ export async function GET(req: Request) {
         c1: 0,
         c2: 0,
         c3: 0,
+        milheiroLucroVendaCents: 0,
         gross: 0,
         tax: 0,
         payoutTax: 0,

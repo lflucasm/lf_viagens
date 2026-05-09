@@ -159,7 +159,7 @@ export function chooseC2(
   return 0;
 }
 
-function chooseCostMilheiro(program: LoyaltyProgram, costDb: number, settings: Settings | null) {
+export function chooseCostMilheiro(program: LoyaltyProgram, costDb: number, settings: Settings | null) {
   if ((costDb ?? 0) > 0) return costDb;
   return costFromSettings(program, settings);
 }
@@ -169,7 +169,7 @@ export function chooseMetaMilheiro(metaSaleOrPurchase: number | null | undefined
   return v > 0 ? v : 0;
 }
 
-/** ✅ lucro do rateio usa PV(sem taxa) - custo */
+/** ✅ lucro da venda (milheiro) = PV sem taxa − (pontos/1000)×custo milheiro */
 function profitForSaleFromPvCents(args: {
   points: number;
   pvNoFeeCents: number;
@@ -181,6 +181,29 @@ function profitForSaleFromPvCents(args: {
 
   const costCents = Math.round(denom * (costMilheiroCents ?? 0));
   return Math.round((pvNoFeeCents ?? 0) - costCents);
+}
+
+/** Lucro por venda (pago ao vendedor): não negativo; custo milheiro da compra ou fallback settings. */
+export function milheiroLucroVendaCents(args: {
+  points: number;
+  pvNoFeeCents: number;
+  program: LoyaltyProgram;
+  purchaseCostMilheiroCents: number;
+  settings: Settings | null;
+}) {
+  const costMilheiro = chooseCostMilheiro(
+    args.program,
+    args.purchaseCostMilheiroCents,
+    args.settings
+  );
+  return Math.max(
+    0,
+    profitForSaleFromPvCents({
+      points: args.points,
+      pvNoFeeCents: args.pvNoFeeCents,
+      costMilheiroCents: costMilheiro,
+    })
+  );
 }
 
 export async function computeEmployeePayoutDay(session: SessionLike, date: string) {

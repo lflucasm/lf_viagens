@@ -11,6 +11,8 @@ type Breakdown = {
   commission1Cents: number; // 1%
   commission2Cents?: number; // bônus
   commission3RateioCents?: number; // rateio
+  milheiroLucroVendaCents?: number;
+  employeeCommissionMode?: "STANDARD" | "MILHEIRO_LUCRO_VENDA";
   salesCount: number;
   taxPercent: number; // 8
   basis?: Basis;
@@ -103,6 +105,7 @@ type DetailSaleLine = {
   c1Cents: number;
   c2Cents: number;
   c3Cents: number;
+  milheiroLucroVendaCents?: number;
   feeCents: number;
   saleFeeCents: number;
 };
@@ -292,6 +295,10 @@ function lucroSemTaxaEmbarqueCents(r: PayoutRow) {
 
 function liquidoComBalcaoCents(r: PayoutRow) {
   return (r.netPayCents || 0) + (r.balcaoCommissionCents || 0);
+}
+
+function isMilheiroCommissionRow(b: Breakdown | null | undefined) {
+  return b?.employeeCommissionMode === "MILHEIRO_LUCRO_VENDA";
 }
 
 export default function ComissoesFuncionariosClient() {
@@ -623,6 +630,7 @@ export default function ComissoesFuncionariosClient() {
         a.c1 += s.c1Cents || 0;
         a.c2 += s.c2Cents || 0;
         a.c3 += s.c3Cents || 0;
+        a.milheiro += s.milheiroLucroVendaCents || 0;
         a.fee += s.feeCents || 0;
         a.pointsValue += s.pointsValueCents || 0;
         a.sales += 1;
@@ -631,9 +639,20 @@ export default function ComissoesFuncionariosClient() {
         a.points += s.points || 0;
         return a;
       },
-      { c1: 0, c2: 0, c3: 0, fee: 0, pointsValue: 0, sales: 0, sellerLines: 0, feeLines: 0, points: 0 }
+      {
+        c1: 0,
+        c2: 0,
+        c3: 0,
+        milheiro: 0,
+        fee: 0,
+        pointsValue: 0,
+        sales: 0,
+        sellerLines: 0,
+        feeLines: 0,
+        points: 0,
+      }
     );
-    return { ...acc, gross: acc.c1 + acc.c2 + acc.c3 };
+    return { ...acc, gross: acc.c1 + acc.c2 + acc.c3 + acc.milheiro };
   }, [detailsSales]);
 
   const detailsLucroSemTaxa = useMemo(() => {
@@ -663,7 +682,8 @@ export default function ComissoesFuncionariosClient() {
         <div className="space-y-1">
           <h1 className="text-xl font-semibold">Comissões — Funcionários</h1>
           <p className="text-sm text-neutral-500">
-            Comissão 1 (1%) + colunas de Comissão 2 (bônus) e Comissão 3 (rateio).
+            Padrão: C1 + bônus + rateio. Funcionários em <b>Lucro por venda</b> aparecem só com lucro milheiro,
+            imposto, taxa de embarque e líquido (sem balcão).
           </p>
         </div>
 
@@ -719,7 +739,7 @@ export default function ComissoesFuncionariosClient() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-8">
-        <KPI label="Bruto (C1+C2+C3)" value={fmtMoneyBR(day?.totals.gross || 0)} />
+        <KPI label="Bruto (C1+C2+C3+milheiro)" value={fmtMoneyBR(day?.totals.gross || 0)} />
         <KPI
           label={`Imposto${dayTaxPercent ? ` (${dayTaxPercent}%)` : ""}`}
           value={fmtMoneyBR(day?.totals.tax || 0)}
@@ -773,6 +793,7 @@ export default function ComissoesFuncionariosClient() {
                 <th className="px-4 py-3">Funcionário</th>
                 <th className="px-4 py-3 text-right">Vendas</th>
 
+                <th className="px-4 py-3">Lucro venda (milheiro)</th>
                 <th className="px-4 py-3">Comissão 1 (1%)</th>
                 <th className="px-4 py-3">Comissão 2 (bônus)</th>
                 <th className="px-4 py-3">Comissão 3 (rateio)</th>
@@ -803,23 +824,42 @@ export default function ComissoesFuncionariosClient() {
 
                 const displayName = firstName(r.user.name, r.user.login);
                 const lucroSemTaxa = lucroSemTaxaEmbarqueCents(r);
+                const milheiroRow = isMilheiroCommissionRow(b);
 
                 return (
                   <tr key={r.id} className="border-t">
                     <td className="px-4 py-3">
                       <div className="font-medium">{displayName}</div>
                       <div className="text-xs text-neutral-500">{r.user.login}</div>
+                      {milheiroRow ? (
+                        <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-sky-700">
+                          Lucro por venda
+                        </div>
+                      ) : null}
                     </td>
 
                     <td className="px-4 py-3 text-right tabular-nums">{b?.salesCount ?? 0}</td>
 
-                    <td className="px-4 py-3">{fmtMoneyBR(b?.commission1Cents ?? 0)}</td>
-                    <td className="px-4 py-3">{fmtMoneyBR(b?.commission2Cents ?? 0)}</td>
-                    <td className="px-4 py-3">{fmtMoneyBR(b?.commission3RateioCents ?? 0)}</td>
+                    <td className={`px-4 py-3 ${milheiroRow ? "font-semibold text-sky-900" : "text-neutral-400"}`}>
+                      {milheiroRow
+                        ? fmtMoneyBR(b?.milheiroLucroVendaCents ?? 0)
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {milheiroRow ? "—" : fmtMoneyBR(b?.commission1Cents ?? 0)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {milheiroRow ? "—" : fmtMoneyBR(b?.commission2Cents ?? 0)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {milheiroRow ? "—" : fmtMoneyBR(b?.commission3RateioCents ?? 0)}
+                    </td>
 
                     <td className="px-4 py-3">{fmtMoneyBR(r.tax7Cents || 0)}</td>
                     <td className="px-4 py-3">{fmtMoneyBR(r.feeCents || 0)}</td>
-                    <td className="px-4 py-3">{fmtMoneyBR(r.balcaoCommissionCents || 0)}</td>
+                    <td className="px-4 py-3">
+                      {milheiroRow ? "—" : fmtMoneyBR(r.balcaoCommissionCents || 0)}
+                    </td>
 
                     <td className={`px-4 py-3 font-semibold ${lucroCellCls}`}>
                       {fmtMoneyBR(lucroSemTaxa)}
@@ -877,7 +917,7 @@ export default function ComissoesFuncionariosClient() {
 
               {!day?.rows?.length && (
                 <tr>
-                  <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={12}>
+                  <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={13}>
                     Sem dados para este dia (ou ainda não autenticado).
                   </td>
                 </tr>
@@ -935,9 +975,9 @@ export default function ComissoesFuncionariosClient() {
       </div>
 
       <p className="text-xs text-neutral-500">
-        Nota: Bruto = C1+C2+C3. <b>Comissão balcão</b> = percentual do lucro líquido do balcão (após imposto), conforme cada emissão; o padrão é 60% se não houver configuração no funcionário.
-        <b> Lucro s/ taxa</b> = bruto − imposto + comissão balcão. <b>Líquido</b> = netPay + comissão balcão
-        (netPay já inclui reembolso da taxa de vendas).
+        Nota: Bruto = C1+C2+C3 ou, em <b>Lucro por venda</b>, só o lucro milheiro da venda. <b>Comissão balcão</b> não
+        entra para quem está em Lucro por venda. <b>Lucro s/ taxa</b> = bruto − imposto + comissão balcão.{" "}
+        <b>Líquido</b> = netPay + comissão balcão (netPay já inclui reembolso da taxa de vendas).
       </p>
 
       {/* ===== Drawer Detalhes + Mês ===== */}
@@ -1102,6 +1142,7 @@ export default function ComissoesFuncionariosClient() {
                           <th className="px-4 py-3">Localizador</th>
                           <th className="px-4 py-3 text-right">Pontos</th>
                           <th className="px-4 py-3">Valor pontos</th>
+                          <th className="px-4 py-3">Lucro venda</th>
                           <th className="px-4 py-3">C1</th>
                           <th className="px-4 py-3">C2</th>
                           <th className="px-4 py-3">C3</th>
@@ -1149,6 +1190,11 @@ export default function ComissoesFuncionariosClient() {
                             <td className="px-4 py-3 text-neutral-600">{s.locator || "-"}</td>
                             <td className="px-4 py-3 text-right tabular-nums">{fmtInt(s.points || 0)}</td>
                             <td className="px-4 py-3">{fmtMoneyBR(s.pointsValueCents || 0)}</td>
+                            <td className="px-4 py-3">
+                              {(s.milheiroLucroVendaCents || 0) > 0
+                                ? fmtMoneyBR(s.milheiroLucroVendaCents || 0)
+                                : "—"}
+                            </td>
                             <td className="px-4 py-3">{fmtMoneyBR(s.c1Cents || 0)}</td>
                             <td className="px-4 py-3">{fmtMoneyBR(s.c2Cents || 0)}</td>
                             <td className="px-4 py-3">{fmtMoneyBR(s.c3Cents || 0)}</td>
@@ -1158,7 +1204,7 @@ export default function ComissoesFuncionariosClient() {
 
                         {!detailsSales?.length ? (
                           <tr>
-                            <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={11}>
+                            <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={12}>
                               Sem linhas para este dia (ou compute não conseguiu auditar).
                             </td>
                           </tr>
@@ -1166,6 +1212,9 @@ export default function ComissoesFuncionariosClient() {
                           <tr className="border-t bg-neutral-50">
                             <td className="px-4 py-3 font-semibold" colSpan={7}>
                               Totais (linhas)
+                            </td>
+                            <td className="px-4 py-3 font-semibold">
+                              {fmtMoneyBR(detailsSum.milheiro || 0)}
                             </td>
                             <td className="px-4 py-3 font-semibold">{fmtMoneyBR(detailsSum.c1)}</td>
                             <td className="px-4 py-3 font-semibold">{fmtMoneyBR(detailsSum.c2)}</td>
@@ -1246,6 +1295,7 @@ export default function ComissoesFuncionariosClient() {
                           <tr>
                             <th className="px-4 py-3">Dia</th>
                             <th className="px-4 py-3 text-right">Vendas</th>
+                            <th className="px-4 py-3">Lucro venda</th>
                             <th className="px-4 py-3">C1</th>
                             <th className="px-4 py-3">C2</th>
                             <th className="px-4 py-3">C3</th>
@@ -1267,6 +1317,7 @@ export default function ComissoesFuncionariosClient() {
                             const paying = payingKey === `${r.date}|${r.userId}`;
 
                             const lucroSemTaxa = lucroSemTaxaEmbarqueCents(r);
+                            const milheiroDay = isMilheiroCommissionRow(b);
 
                             return (
                               <tr key={r.id} className="border-t">
@@ -1274,13 +1325,27 @@ export default function ComissoesFuncionariosClient() {
 
                                 <td className="px-4 py-3 text-right tabular-nums">{b?.salesCount ?? 0}</td>
 
-                                <td className="px-4 py-3">{fmtMoneyBR(b?.commission1Cents ?? 0)}</td>
-                                <td className="px-4 py-3">{fmtMoneyBR(b?.commission2Cents ?? 0)}</td>
-                                <td className="px-4 py-3">{fmtMoneyBR(b?.commission3RateioCents ?? 0)}</td>
+                                <td className={`px-4 py-3 ${milheiroDay ? "font-semibold text-sky-900" : "text-neutral-400"}`}>
+                                  {milheiroDay
+                                    ? fmtMoneyBR(b?.milheiroLucroVendaCents ?? 0)
+                                    : "—"}
+                                </td>
+
+                                <td className="px-4 py-3">
+                                  {milheiroDay ? "—" : fmtMoneyBR(b?.commission1Cents ?? 0)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {milheiroDay ? "—" : fmtMoneyBR(b?.commission2Cents ?? 0)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {milheiroDay ? "—" : fmtMoneyBR(b?.commission3RateioCents ?? 0)}
+                                </td>
 
                                 <td className="px-4 py-3">{fmtMoneyBR(r.tax7Cents || 0)}</td>
                                 <td className="px-4 py-3">{fmtMoneyBR(r.feeCents || 0)}</td>
-                                <td className="px-4 py-3">{fmtMoneyBR(r.balcaoCommissionCents || 0)}</td>
+                                <td className="px-4 py-3">
+                                  {milheiroDay ? "—" : fmtMoneyBR(r.balcaoCommissionCents || 0)}
+                                </td>
 
                                 <td className={`px-4 py-3 font-semibold ${lucroCellCls}`}>
                                   {fmtMoneyBR(lucroSemTaxa)}
@@ -1334,7 +1399,7 @@ export default function ComissoesFuncionariosClient() {
 
                           {!monthData?.days?.length && (
                             <tr>
-                              <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={12}>
+                              <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={13}>
                                 Sem dados no mês selecionado.
                               </td>
                             </tr>

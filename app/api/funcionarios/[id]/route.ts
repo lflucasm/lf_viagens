@@ -1,5 +1,6 @@
 // app/api/funcionarios/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { EmployeeCommissionMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveBalcaoSellerCommissionPercent } from "@/lib/balcao-commission";
 
@@ -44,6 +45,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       cpf: true,
       employeeId: true,
       balcaoSellerCommissionPercent: true,
+      employeeCommissionMode: true,
       role: true,
       team: true,
       createdAt: true,
@@ -63,6 +65,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         login: u.login,
         cpf: u.cpf,
         employeeId: u.employeeId ?? null,
+        employeeCommissionMode: u.employeeCommissionMode,
         balcaoSellerCommissionPercent: u.balcaoSellerCommissionPercent ?? null,
         balcaoSellerCommissionPercentEffective: resolveBalcaoSellerCommissionPercent(
           u.balcaoSellerCommissionPercent
@@ -105,6 +108,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
   }
 
+  let employeeCommissionMode: EmployeeCommissionMode | undefined = undefined;
+  if ("employeeCommissionMode" in body && body?.employeeCommissionMode != null) {
+    const raw = String(body.employeeCommissionMode || "").trim().toUpperCase();
+    if (raw === "STANDARD" || raw === "MILHEIRO_LUCRO_VENDA") {
+      employeeCommissionMode = raw as EmployeeCommissionMode;
+    } else {
+      return NextResponse.json(
+        { ok: false, error: "Modalidade de comissão inválida." },
+        { status: 400, headers: noCacheHeaders() }
+      );
+    }
+  }
+
   if (!name || !login || !employeeId) {
     return NextResponse.json({ ok: false, error: "Nome, login e ID são obrigatórios." }, { status: 400, headers: noCacheHeaders() });
   }
@@ -120,6 +136,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         ...(balcaoSellerCommissionPercent !== undefined
           ? { balcaoSellerCommissionPercent }
           : {}),
+        ...(employeeCommissionMode !== undefined ? { employeeCommissionMode } : {}),
       },
       select: {
         id: true,
@@ -128,6 +145,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         cpf: true,
         employeeId: true,
         balcaoSellerCommissionPercent: true,
+        employeeCommissionMode: true,
         team: true,
         role: true,
         createdAt: true,
@@ -144,6 +162,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           login: updated.login,
           cpf: updated.cpf,
           employeeId: updated.employeeId ?? null,
+          employeeCommissionMode: updated.employeeCommissionMode,
           balcaoSellerCommissionPercent: updated.balcaoSellerCommissionPercent ?? null,
           balcaoSellerCommissionPercentEffective: resolveBalcaoSellerCommissionPercent(
             updated.balcaoSellerCommissionPercent
