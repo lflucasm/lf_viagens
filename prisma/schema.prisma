@@ -92,6 +92,12 @@ enum ProtocolStatus {
   DENIED
 }
 
+/// Vendas via consolidadora: aguarda pagamento da consolidadora para liberar (fora do fluxo de comissões de funcionários).
+enum ConsolidatorSaleSettlementStatus {
+  AWAITING_CONSOLIDATOR_PAYMENT
+  RELEASED
+}
+
 /**
  * =========================
  * ✅ TERMOS / CONFIANÇA (NOVO)
@@ -229,6 +235,9 @@ model User {
   anotacoesCreated     Anotacao[]          @relation("AnotacaoCreatedBy")
   latamPromoListItemsAdded    LatamPromoListItem[] @relation("LatamPromoListItemAddedBy")
   latamPromoListItemsReviewed LatamPromoListItem[] @relation("LatamPromoListItemReviewedBy")
+
+  consolidatorSalesCreated  ConsolidatorSale[] @relation("ConsolidatorSaleCreatedBy")
+  consolidatorSalesReleased ConsolidatorSale[] @relation("ConsolidatorSaleReleasedBy")
 
   @@index([team])
   @@index([role])
@@ -1746,4 +1755,28 @@ model Anotacao {
   @@index([team, createdAt])
   @@index([cedenteId])
   @@map("anotacoes")
+}
+
+model ConsolidatorSale {
+  id               String                           @id @default(cuid())
+  team             String
+  consolidatorName String
+  clientName       String
+  totalCents       Int
+  commissionCents  Int
+  /// Comissão em basis points (1% = 100 bps), derivada de commissionCents/totalCents.
+  commissionBps    Int?
+  status           ConsolidatorSaleSettlementStatus @default(AWAITING_CONSOLIDATOR_PAYMENT)
+  releasedAt       DateTime?
+  releasedById     String?
+  releasedBy       User?                          @relation("ConsolidatorSaleReleasedBy", fields: [releasedById], references: [id], onDelete: SetNull)
+  notes            String?
+  createdById      String
+  createdBy        User                             @relation("ConsolidatorSaleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+
+  @@index([team, status])
+  @@index([team, createdAt])
+  @@map("consolidator_sales")
 }

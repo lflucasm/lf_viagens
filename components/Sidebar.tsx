@@ -258,9 +258,6 @@ export default function Sidebar() {
   // ✅ NOVO: Protocolos
   const isProtocolosRoute = pathname.startsWith("/dashboard/protocolos");
 
-  // ✅ NOVO: Grupo VIP WhatsApp
-  const isGrupoVipWhatsappRoute = pathname.startsWith("/dashboard/grupo-vip-whatsapp");
-
   // ✅ NOVO: OUTROS
   const isAutomacaoRoute = pathname.startsWith("/dashboard/automacao");
   const isWalletRoute = pathname.startsWith("/dashboard/wallet");
@@ -286,13 +283,23 @@ export default function Sidebar() {
     "/dashboard/emissoes-balcao"
   );
 
+  const isConsolidadoraRoute = pathname.startsWith(
+    "/dashboard/operador-vendas/consolidadora"
+  );
+
+  const isOperadorVendasRoute =
+    isEmissoesBalcaoRoute || isConsolidadoraRoute;
+
   const isOutrosRoute =
     isAutomacaoRoute ||
     isWalletRoute ||
     isAgendaRoute ||
     isAnotacoesRoute ||
     isAtualizacaoTermosRoute ||
-    isHorarioBiometriaRoute;
+    isHorarioBiometriaRoute ||
+    isProtocolosRoute ||
+    isImportacoesRoute ||
+    isImportacoesEmissoesLatamRoute;
 
   /* =========================
    * ACCORDIONS
@@ -379,10 +386,12 @@ export default function Sidebar() {
 
   // ✅ NOVO: OUTROS
   const [openOutros, setOpenOutros] = useState(isOutrosRoute);
+  const [openOperadorVendas, setOpenOperadorVendas] = useState(
+    isOperadorVendasRoute
+  );
   const [openEmissoesBalcao, setOpenEmissoesBalcao] = useState(
     isEmissoesBalcaoRoute
   );
-  const [openGrupoVip, setOpenGrupoVip] = useState(isGrupoVipWhatsappRoute);
 
   useEffect(() => setOpenCadastro(isCadastroRoute), [isCadastroRoute]);
 
@@ -488,12 +497,12 @@ export default function Sidebar() {
   }, [isOutrosRoute]);
 
   useEffect(() => {
-    setOpenEmissoesBalcao(isEmissoesBalcaoRoute);
-  }, [isEmissoesBalcaoRoute]);
+    setOpenOperadorVendas(isOperadorVendasRoute);
+  }, [isOperadorVendasRoute]);
 
   useEffect(() => {
-    setOpenGrupoVip(isGrupoVipWhatsappRoute);
-  }, [isGrupoVipWhatsappRoute]);
+    setOpenEmissoesBalcao(isEmissoesBalcaoRoute);
+  }, [isEmissoesBalcaoRoute]);
 
   /* =========================
    * FILTRO (VISUALIZAR PONTOS)
@@ -885,20 +894,6 @@ export default function Sidebar() {
           </SubAccordion>
         </Accordion>
 
-        {/* ================= PROTOCOLOS ================= */}
-        <Accordion
-          title="Protocolos"
-          open={openProtocolos}
-          onToggle={() => setOpenProtocolos((v) => !v)}
-          active={isProtocolosRoute}
-          accent="rose"
-        >
-          <NavLink href="/dashboard/protocolos/latam">Latam</NavLink>
-          <NavLink href="/dashboard/protocolos/smiles">Smiles</NavLink>
-          <NavLink href="/dashboard/protocolos/livelo">Livelo</NavLink>
-          <NavLink href="/dashboard/protocolos/esfera">Esfera</NavLink>
-        </Accordion>
-
         {/* ================= FINANCEIRO ================= */}
         <Accordion
           title="Financeiro"
@@ -932,30 +927,6 @@ export default function Sidebar() {
         >
           <NavLink href="/dashboard/dados-contabeis/vendas">Vendas</NavLink>
           <NavLink href="/dashboard/dados-contabeis/compras">Compras</NavLink>
-        </Accordion>
-
-        {/* ================= IMPORTAÇÕES (FORA DO GESTOR) ================= */}
-        <Accordion
-          title="Importações"
-          open={openImportacoes}
-          onToggle={() => setOpenImportacoes((v) => !v)}
-          active={isImportacoesRoute || isImportacoesEmissoesLatamRoute}
-          accent="cyan"
-        >
-          <SubAccordion
-            title="Emissões"
-            open={openImportacoesEmissoes}
-            onToggle={() => setOpenImportacoesEmissoes((v) => !v)}
-            variant="nav"
-            active={isImportacoesEmissoesLatamRoute}
-          >
-            <NavLink
-              href="/dashboard/emissoes/import-latam"
-              className="font-semibold"
-            >
-              Latam
-            </NavLink>
-          </SubAccordion>
         </Accordion>
 
         {/* ================= GESTOR DE EMISSÕES ================= */}
@@ -1011,34 +982,27 @@ export default function Sidebar() {
           </SubAccordion>
         </Accordion>
 
-        {/* ================= OUTROS ================= */}
+        {/* ================= OPERADOR DE VENDAS ================= */}
         <Accordion
-          title="Emissões no balcão"
-          open={openEmissoesBalcao}
-          onToggle={() => setOpenEmissoesBalcao((v) => !v)}
-          active={isEmissoesBalcaoRoute}
+          title="Operador de vendas"
+          open={openOperadorVendas}
+          onToggle={() => setOpenOperadorVendas((v) => !v)}
+          active={isOperadorVendasRoute}
           accent="cyan"
         >
-          <NavLink href="/dashboard/emissoes-balcao/compra-venda">
-            Compra e Venda
-          </NavLink>
-        </Accordion>
-
-        <Accordion
-          title="Grupo VIP WHATSAPP"
-          open={openGrupoVip}
-          onToggle={() => setOpenGrupoVip((v) => !v)}
-          active={isGrupoVipWhatsappRoute}
-          accent="blue"
-        >
-          <NavLink href="/dashboard/grupo-vip-whatsapp" exact>
-            Cadastros
-          </NavLink>
-          <NavLink href="/dashboard/grupo-vip-whatsapp/clientes" exact>
-            Clientes
-          </NavLink>
-          <NavLink href="/dashboard/grupo-vip-whatsapp/rateio" exact>
-            Rateio do lucro
+          <SubAccordion
+            title="Emissões no balcão"
+            open={openEmissoesBalcao}
+            onToggle={() => setOpenEmissoesBalcao((v) => !v)}
+            variant="nav"
+            active={isEmissoesBalcaoRoute}
+          >
+            <NavLink href="/dashboard/emissoes-balcao/compra-venda">
+              Compra e Venda
+            </NavLink>
+          </SubAccordion>
+          <NavLink href="/dashboard/operador-vendas/consolidadora">
+            Consolidadora
           </NavLink>
         </Accordion>
 
@@ -1051,6 +1015,42 @@ export default function Sidebar() {
           accent="slate"
         >
           <NavLink href="/dashboard/automacao">Automação</NavLink>
+
+          <SubAccordion
+            title="Protocolos"
+            open={openProtocolos}
+            onToggle={() => setOpenProtocolos((v) => !v)}
+            variant="nav"
+            active={isProtocolosRoute}
+          >
+            <NavLink href="/dashboard/protocolos/latam">Latam</NavLink>
+            <NavLink href="/dashboard/protocolos/smiles">Smiles</NavLink>
+            <NavLink href="/dashboard/protocolos/livelo">Livelo</NavLink>
+            <NavLink href="/dashboard/protocolos/esfera">Esfera</NavLink>
+          </SubAccordion>
+
+          <SubAccordion
+            title="Importações"
+            open={openImportacoes}
+            onToggle={() => setOpenImportacoes((v) => !v)}
+            variant="nav"
+            active={isImportacoesRoute || isImportacoesEmissoesLatamRoute}
+          >
+            <SubAccordion
+              title="Emissões"
+              open={openImportacoesEmissoes}
+              onToggle={() => setOpenImportacoesEmissoes((v) => !v)}
+              variant="nav"
+              active={isImportacoesEmissoesLatamRoute}
+            >
+              <NavLink
+                href="/dashboard/emissoes/import-latam"
+                className="font-semibold"
+              >
+                Latam
+              </NavLink>
+            </SubAccordion>
+          </SubAccordion>
 
           {/* ✅ NOVO: Agenda */}
           <NavLink href="/dashboard/agenda">Agenda</NavLink>
