@@ -391,7 +391,8 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
             <div className="text-sm font-semibold text-rose-900">Zona de risco</div>
             <p className="text-xs text-rose-800/90">
               Só é possível excluir se não houver cedentes como responsável, leads VIP, eventos de agenda criados por
-              este usuário, etc. O último administrador do time não pode ser excluído nem ter o time alterado.
+              este usuário, anotações, registros em Consolidadora cadastrados por ele, etc. O último administrador do
+              time não pode ser excluído nem ter o time alterado.
             </p>
             <button
               type="button"

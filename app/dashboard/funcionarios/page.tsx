@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type FuncItem = {
   id: string;
@@ -22,11 +23,12 @@ function baseUrl() {
 }
 
 export default function FuncionariosPage() {
+  const pathname = usePathname();
   const [items, setItems] = useState<FuncItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -39,11 +41,13 @@ export default function FuncionariosPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    if (pathname === "/dashboard/funcionarios") {
+      load();
+    }
+  }, [pathname, load]);
 
   const appBase = useMemo(() => baseUrl(), []);
 

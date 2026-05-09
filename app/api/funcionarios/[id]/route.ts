@@ -282,12 +282,14 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
       agendaCriados,
       auditorias,
       anotacoes,
+      vendasConsolidadora,
     ] = await Promise.all([
       prisma.cedente.count({ where: { ownerId: id } }),
       prisma.vipWhatsappLead.count({ where: { employeeId: id } }),
       prisma.agendaEvent.count({ where: { createdById: id } }),
       prisma.agendaAudit.count({ where: { actorId: id } }),
       prisma.anotacao.count({ where: { createdById: id } }),
+      prisma.consolidatorSale.count({ where: { createdById: id } }),
     ]);
 
     const partes: string[] = [];
@@ -296,6 +298,9 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (agendaCriados > 0) partes.push(`${agendaCriados} evento(s) de agenda criados`);
     if (auditorias > 0) partes.push(`${auditorias} registro(s) de auditoria da agenda`);
     if (anotacoes > 0) partes.push(`${anotacoes} anotação(ões)`);
+    if (vendasConsolidadora > 0) {
+      partes.push(`${vendasConsolidadora} registro(s) em Consolidadora (cadastrados por este usuário)`);
+    }
 
     if (partes.length > 0) {
       return NextResponse.json(

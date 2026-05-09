@@ -571,6 +571,25 @@ export default function Sidebar() {
       )}
 
       <nav className="flex-1 overflow-y-auto space-y-2 px-2 py-4">
+        <Link
+          href="/dashboard"
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+            pathname === "/dashboard"
+              ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200/90"
+              : "text-slate-800 hover:bg-slate-100"
+          )}
+        >
+          <span
+            className={cn(
+              "h-2 w-2 shrink-0 rounded-full",
+              pathname === "/dashboard" ? "bg-sky-500" : "bg-slate-400"
+            )}
+            aria-hidden
+          />
+          Página inicial
+        </Link>
+
         {/* ================= CADASTRO ================= */}
         <Accordion
           title="Cadastro"
