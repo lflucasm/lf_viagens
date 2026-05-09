@@ -117,13 +117,14 @@ export function SummaryCard({
   );
 }
 
-export type ShortcutCardTone = "sky" | "emerald" | "indigo" | "amber";
+export type ShortcutCardTone = "sky" | "emerald" | "indigo" | "amber" | "teal";
 
 const SHORTCUT_GRADIENT_RING: Record<ShortcutCardTone, string> = {
   sky: "from-sky-500/15 to-white ring-sky-200/80 hover:ring-sky-300",
   emerald: "from-emerald-500/15 to-white ring-emerald-200/80 hover:ring-emerald-300",
   indigo: "from-indigo-500/15 to-white ring-indigo-200/80 hover:ring-indigo-300",
   amber: "from-amber-500/15 to-white ring-amber-200/80 hover:ring-amber-300",
+  teal: "from-teal-500/15 to-white ring-teal-200/80 hover:ring-teal-300",
 };
 
 const SHORTCUT_ICON_BG: Record<ShortcutCardTone, string> = {
@@ -131,6 +132,7 @@ const SHORTCUT_ICON_BG: Record<ShortcutCardTone, string> = {
   emerald: "bg-emerald-600",
   indigo: "bg-indigo-600",
   amber: "bg-amber-600",
+  teal: "bg-teal-600",
 };
 
 export function ShortcutCard({

@@ -4,9 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Building2,
   CalendarDays,
   LayoutDashboard,
   Loader2,
+  Plane,
   ShoppingCart,
   Store,
   Users,
@@ -185,7 +187,7 @@ export default function DashboardHomeClient({
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
           Atalhos
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ShortcutCard
             href="/dashboard/vendas/nova"
             title="Efetuar venda"
@@ -213,6 +215,20 @@ export default function DashboardHomeClient({
             description="Comissões e pagamentos da equipe."
             icon={<Users className="h-5 w-5" strokeWidth={2} />}
             tone="amber"
+          />
+          <ShortcutCard
+            href="/dashboard/emissoes-balcao/compra-venda"
+            title="Emissões no balcão"
+            description="Compra e venda de milhas no balcão."
+            icon={<Plane className="h-5 w-5" strokeWidth={2} />}
+            tone="indigo"
+          />
+          <ShortcutCard
+            href="/dashboard/operador-vendas/consolidadora"
+            title="Consolidadora"
+            description="Vendas por consolidadora, comissão e liberação."
+            icon={<Building2 className="h-5 w-5" strokeWidth={2} />}
+            tone="teal"
           />
         </div>
       </div>
