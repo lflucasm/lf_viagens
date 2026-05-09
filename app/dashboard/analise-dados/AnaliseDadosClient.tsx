@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Download } from "lucide-react";
+import { StatCard, type StatCardTone } from "@/components/ui/dashboard-cards";
 
 function fmtMoneyBR(cents: number) {
   const v = (cents || 0) / 100;
@@ -116,17 +117,6 @@ type MilheiroPoint = {
   subSmiles?: string;
 };
 
-type CardTone = "sky" | "emerald" | "amber" | "rose" | "slate" | "teal";
-
-const CARD_TONE_CLASS: Record<CardTone, string> = {
-  sky: "border-sky-100 bg-gradient-to-br from-sky-50/80 to-white",
-  emerald: "border-emerald-100 bg-gradient-to-br from-emerald-50/80 to-white",
-  amber: "border-amber-100 bg-gradient-to-br from-amber-50/80 to-white",
-  rose: "border-rose-100 bg-gradient-to-br from-rose-50/80 to-white",
-  teal: "border-teal-100 bg-gradient-to-br from-teal-50/80 to-white",
-  slate: "border-slate-200 bg-white",
-};
-
 const CHART_COLORS = [
   "#0ea5e9",
   "#22c55e",
@@ -172,26 +162,6 @@ const LEGACY_MONTHLY_PROFIT_CENTS: Record<string, number> = {
   "2025-11": 2251929, // nov/25
   "2025-12": 1455849, // dez/25
 };
-
-function Card({
-  title,
-  value,
-  sub,
-  tone = "slate",
-}: {
-  title: string;
-  value: string;
-  sub?: string;
-  tone?: CardTone;
-}) {
-  return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${CARD_TONE_CLASS[tone]}`}>
-      <div className="text-xs text-neutral-600">{title}</div>
-      <div className="mt-1 text-xl font-semibold">{value}</div>
-      {sub ? <div className="mt-1 text-xs text-neutral-500">{sub}</div> : null}
-    </div>
-  );
-}
 
 // ======= charts simples (sem libs) =======
 function SimpleLineChart({
@@ -1564,14 +1534,14 @@ export default function AnaliseDadosClient() {
     return `últimos ${fmtInt(daysBack)} dias`;
   }, [chartMode, monthsBack, daysPreset, dateFrom, dateTo, daysBack]);
 
-  const comparisonTone: CardTone =
+  const comparisonTone: StatCardTone =
     currentVsPrevious?.deltaProfitPercent == null
       ? "slate"
       : currentVsPrevious.deltaProfitPercent >= 0
         ? "emerald"
         : "rose";
 
-  const milheiroTone = (deltaPct: number | null | undefined, delta: number | undefined): CardTone => {
+  const milheiroTone = (deltaPct: number | null | undefined, delta: number | undefined): StatCardTone => {
     if (deltaPct == null || delta == null) return "slate";
     return delta >= 0 ? "emerald" : "rose";
   };
@@ -1695,25 +1665,25 @@ export default function AnaliseDadosClient() {
 
       {/* HOJE */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card
+        <StatCard
           title={today?.date ? `Total vendido hoje (${today.date})` : "Total vendido hoje"}
           value={fmtMoneyBR(today?.grossCents || 0)}
           sub={`${fmtInt(today?.salesCount || 0)} vendas • ${fmtInt(today?.passengers || 0)} pax`}
           tone="sky"
         />
-        <Card
+        <StatCard
           title="Total do dia (com taxa embarque)"
           value={fmtMoneyBR(today?.totalCents || 0)}
           sub={`Taxa embarque: ${fmtMoneyBR(today?.feeCents || 0)}`}
           tone="emerald"
         />
-        <Card
+        <StatCard
           title="Mês selecionado"
           value={data?.summary?.monthLabel || (data?.filters?.month || focusYM) || "—"}
           sub={`Período no gráfico: ${chartPeriodLabel}`}
           tone="amber"
         />
-        <Card
+        <StatCard
           title="Balcão hoje (valor vendido)"
           value={fmtMoneyBR(balcaoToday?.customerChargeCents || 0)}
           sub={`${fmtInt(balcaoToday?.operationsCount || 0)} operações • lucro líquido: ${fmtMoneyBR(
@@ -1724,7 +1694,7 @@ export default function AnaliseDadosClient() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Card
+        <StatCard
           title="Maior dia vendido (histórico)"
           value={fmtMoneyBR(salesDailyHistorySummary?.grossCents || 0)}
           sub={
@@ -1734,7 +1704,7 @@ export default function AnaliseDadosClient() {
           }
           tone="sky"
         />
-        <Card
+        <StatCard
           title="Maior mês vendido (histórico)"
           value={fmtMoneyBR(salesMonthlyHistorySummary?.grossCents || 0)}
           sub={salesMonthlyHistorySummary ? salesMonthlyHistorySummary.label : "Sem histórico suficiente"}
@@ -1785,7 +1755,7 @@ export default function AnaliseDadosClient() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card
+        <StatCard
           title="Total vendido no mês (milhas)"
           value={fmtMoneyBR(consolidated?.soldSalesCents || kpis?.gross || 0)}
           sub={`Média mensal (milhas): ${fmtMoneyBR(avgMonthlySalesCents)} • Total com balcão: ${fmtMoneyBR(
@@ -1793,9 +1763,9 @@ export default function AnaliseDadosClient() {
           )}`}
           tone="teal"
         />
-        <Card title="Quantidade de vendas no mês" value={fmtInt(kpis?.count || 0)} tone="sky" />
-        <Card title="Passageiros emitidos no mês" value={fmtInt(kpis?.pax || 0)} tone="emerald" />
-        <Card
+        <StatCard title="Quantidade de vendas no mês" value={fmtInt(kpis?.count || 0)} tone="sky" />
+        <StatCard title="Passageiros emitidos no mês" value={fmtInt(kpis?.pax || 0)} tone="emerald" />
+        <StatCard
           title="LATAM vs SMILES (mês)"
           value={`${fmtMoneyBR(kpis?.latam || 0)} / ${fmtMoneyBR(kpis?.smiles || 0)}`}
           sub={`Clubes: LATAM ${fmtInt(kpis?.clubsLatam || 0)} | SMILES ${fmtInt(kpis?.clubsSmiles || 0)}`}
@@ -1804,7 +1774,7 @@ export default function AnaliseDadosClient() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-5 shadow-sm">
+        <div className="rounded-2xl border-2 border-indigo-200/90 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-5 shadow-sm shadow-slate-200/35">
           <div className="inline-flex rounded-full border border-indigo-300 bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
             Principal
           </div>
@@ -1818,7 +1788,7 @@ export default function AnaliseDadosClient() {
           </div>
         </div>
 
-        <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-5 shadow-sm">
+        <div className="rounded-2xl border-2 border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-5 shadow-sm shadow-slate-200/35">
           <div className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
             Principal
           </div>
@@ -1847,7 +1817,7 @@ export default function AnaliseDadosClient() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Card
+        <StatCard
           title="Balcão no mês (valor vendido)"
           value={fmtMoneyBR(balcaoMonth?.customerChargeCents || 0)}
           sub={`${fmtInt(balcaoMonth?.operationsCount || 0)} operações • ${fmtInt(
@@ -1855,7 +1825,7 @@ export default function AnaliseDadosClient() {
           )} pontos`}
           tone="amber"
         />
-        <Card
+        <StatCard
           title="Balcão no mês (lucro líquido)"
           value={fmtMoneyBR(balcaoMonth?.netProfitCents || 0)}
           sub={`Lucro bruto: ${fmtMoneyBR(balcaoMonth?.profitCents || 0)} • Imposto: ${fmtMoneyBR(
@@ -1865,7 +1835,7 @@ export default function AnaliseDadosClient() {
         />
       </div>
 
-      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-indigo-100/90 bg-gradient-to-br from-indigo-50/80 to-white p-5 shadow-sm shadow-slate-200/35">
         <div className="text-xs text-indigo-700">Métrica do mês corrente {currentMonthPerformance?.month || "—"}</div>
         <div className="mt-1 text-2xl font-semibold text-indigo-900">
           {currentMonthPerformance?.salesOverProfitPercent !== null &&
@@ -1888,7 +1858,7 @@ export default function AnaliseDadosClient() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Card
+        <StatCard
           title={`Lucro ${currentVsPrevious?.currentMonth || "mês corrente"} (pós-imposto e prejuízo)`}
           value={fmtMoneyBR(currentVsPrevious?.currentProfitCents || 0)}
           sub={
@@ -1904,7 +1874,7 @@ export default function AnaliseDadosClient() {
           }
           tone="emerald"
         />
-        <Card
+        <StatCard
           title={`Lucro ${currentVsPrevious?.previousMonth || "mês anterior"} (pós-imposto e prejuízo)`}
           value={fmtMoneyBR(currentVsPrevious?.previousProfitCents || 0)}
           sub={
@@ -1920,7 +1890,7 @@ export default function AnaliseDadosClient() {
           }
           tone="sky"
         />
-        <Card
+        <StatCard
           title="Comparação com mês anterior"
           value={
             currentVsPrevious?.deltaProfitPercent == null
@@ -2116,7 +2086,7 @@ export default function AnaliseDadosClient() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card
+        <StatCard
           title={`LATAM (dia ${milheiroComparison.daily.latam?.currentLabel || "—"})`}
           value={fmtMoneyBR(milheiroComparison.daily.latam?.current || 0)}
           sub={milheiroSub(
@@ -2130,7 +2100,7 @@ export default function AnaliseDadosClient() {
             milheiroComparison.daily.latam?.delta
           )}
         />
-        <Card
+        <StatCard
           title={`Smiles (dia ${milheiroComparison.daily.smiles?.currentLabel || "—"})`}
           value={fmtMoneyBR(milheiroComparison.daily.smiles?.current || 0)}
           sub={milheiroSub(
@@ -2144,7 +2114,7 @@ export default function AnaliseDadosClient() {
             milheiroComparison.daily.smiles?.delta
           )}
         />
-        <Card
+        <StatCard
           title={`LATAM (mês ${milheiroComparison.monthly.latam?.currentLabel || "—"})`}
           value={fmtMoneyBR(milheiroComparison.monthly.latam?.current || 0)}
           sub={milheiroSub(
@@ -2158,7 +2128,7 @@ export default function AnaliseDadosClient() {
             milheiroComparison.monthly.latam?.delta
           )}
         />
-        <Card
+        <StatCard
           title={`Smiles (mês ${milheiroComparison.monthly.smiles?.currentLabel || "—"})`}
           value={fmtMoneyBR(milheiroComparison.monthly.smiles?.current || 0)}
           sub={milheiroSub(

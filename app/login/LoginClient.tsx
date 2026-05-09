@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Instagram, MessageCircle } from "lucide-react";
 
@@ -46,24 +47,31 @@ export default function LoginClient() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center p-6">
+    <main
+      className="relative min-h-screen grid place-items-center p-6 bg-slate-950 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/brand/login-bg.png')" }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-slate-950/35" aria-hidden />
       {/* Wrapper pra permitir card + links fora */}
-      <div className="w-[min(420px,92vw)]">
+      <div className="relative z-10 w-[min(420px,92vw)] space-y-6">
+        <div className="flex justify-center">
+          <Image
+            src="/brand/lf-viagens-logo.png"
+            alt="LF Viagens"
+            width={320}
+            height={96}
+            priority
+            className="h-16 w-auto max-w-[min(320px,88vw)] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.45)]"
+          />
+        </div>
         <form
           onSubmit={onSubmit}
-          className="space-y-4 rounded-2xl border p-6 shadow-sm bg-white"
+          className="space-y-4 rounded-2xl border border-slate-200/90 p-6 shadow-sm shadow-slate-200/40 bg-white"
         >
           {/* Header */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md border border-cyan-300/70 bg-slate-950 text-xs font-bold text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.55)]">
-              LF
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight text-cyan-300 [text-shadow:0_0_8px_rgba(34,211,238,0.65)]">
-                LF Vianges - Trademiles
-              </h1>
-              <p className="text-xs text-neutral-500">Acesse seu painel</p>
-            </div>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">TradeMiles</h1>
+            <p className="text-xs text-slate-500">Acesse seu painel</p>
           </div>
 
           {/* Campos */}
@@ -105,19 +113,19 @@ export default function LoginClient() {
           </div>
 
           {/* Rodapé institucional */}
-          <footer className="pt-3 text-center text-[11px] text-neutral-500 space-y-0.5">
-            <p>LF Vianges - Trademiles — uma empresa do grupo Vias Aéreas LTDA</p>
+          <footer className="pt-3 text-center text-[11px] text-slate-500 space-y-0.5">
+            <p>LF Viagens · TradeMiles — uma empresa do grupo Vias Aéreas LTDA</p>
             <p>CNPJ: 63.817.773/0001-85</p>
           </footer>
         </form>
 
         {/* ✅ Links fora do card */}
-        <div className="pt-4 flex items-center justify-center gap-8 text-sm text-neutral-700">
+        <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-slate-200">
           <a
             href="https://instagram.com/viasaereastrip"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 hover:text-black"
+            className="flex items-center gap-2 hover:text-white"
             aria-label="Instagram @viasaereastrip"
           >
             <Instagram size={18} />
@@ -128,7 +136,7 @@ export default function LoginClient() {
             href="https://wa.me/5553999760707"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 hover:text-black"
+            className="flex items-center gap-2 hover:text-white"
             aria-label="WhatsApp (53) 99976-0707"
           >
             <MessageCircle size={18} />

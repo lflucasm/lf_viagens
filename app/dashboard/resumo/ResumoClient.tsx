@@ -1246,9 +1246,9 @@ export default function CedentesResumoClient() {
       {/* Top cards */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Milhas */}
-        <div className="rounded-2xl border bg-white p-4 space-y-3">
+        <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50/60 to-white p-5 shadow-sm shadow-slate-200/35 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="font-semibold">Milhas atuais</div>
+            <div className="font-semibold text-slate-900">Milhas atuais</div>
             <span className="text-[11px] rounded-full bg-slate-100 px-2 py-1 text-slate-600">
               somatório cedentes
             </span>
@@ -1275,9 +1275,9 @@ export default function CedentesResumoClient() {
         </div>
 
         {/* Caixa */}
-        <div className="rounded-2xl border bg-white p-4 space-y-3">
+        <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50/60 to-white p-5 shadow-sm shadow-slate-200/35 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="font-semibold">Caixa (saldos)</div>
+            <div className="font-semibold text-slate-900">Caixa (saldos)</div>
             <span className="text-[11px] rounded-full bg-slate-100 px-2 py-1 text-slate-600">
               referência operacional
             </span>
