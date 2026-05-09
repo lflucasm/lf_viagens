@@ -2,6 +2,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { BarChart3, Upload, Wallet } from "lucide-react";
+import { PageHeader, SectionCard } from "@/components/dashboard";
 import LogoutButton from "@/components/LogoutButton";
 import { ShortcutCard } from "@/components/ui/dashboard-cards";
 
@@ -45,20 +46,19 @@ export default async function DashboardHome() {
   if (!session) redirect("/login?next=/dashboard");
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-slate-600">
-            Olá, <span className="font-medium">{session.login}</span>!
-          </p>
-        </div>
-        <LogoutButton />
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Dashboard"
+        description={
+          <>
+            Olá, <span className="font-medium text-slate-800">{session.login}</span> — aqui tens um resumo
+            rápido e atalhos para as áreas mais usadas.
+          </>
+        }
+        actions={<LogoutButton />}
+      />
 
-      <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50/60 to-white p-5 shadow-sm shadow-slate-200/35">
-        <div className="text-sm font-semibold mb-3 text-slate-900">Sua sessão</div>
-
+      <SectionCard title="Sua sessão">
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <span className="text-slate-500">ID:</span>{" "}
@@ -80,10 +80,10 @@ export default async function DashboardHome() {
             <span className="text-slate-900">{session.team}</span>
           </div>
         </div>
-      </div>
+      </SectionCard>
 
       <div>
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Atalhos</h2>
+        <h2 className="mb-3 text-sm font-semibold tracking-tight text-slate-900">Atalhos</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ShortcutCard
             href="/dashboard/cedentes/importar"

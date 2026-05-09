@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/dashboard";
 import { useEffect, useMemo, useState } from "react";
 
 type Points = { latam: number; smiles: number; livelo: number; esfera: number };
@@ -1224,24 +1225,19 @@ export default function CedentesResumoClient() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Resumo</h1>
-          <p className="text-sm text-slate-600">
-            Patrimônio estimado: milhas (por milheiro) + saldos + a receber (vendas) + dívidas a receber −
-            dívidas − pendências (comissões/funcionários/impostos).
-          </p>
-        </div>
-
-        <button
-          onClick={load}
-          className="rounded-xl border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
-          disabled={loading}
-        >
-          {loading ? "Atualizando..." : "Atualizar"}
-        </button>
-      </div>
+      <PageHeader
+        title="Resumo"
+        description="Patrimônio estimado: milhas (por milheiro) + saldos + a receber (vendas) + dívidas a receber − dívidas − pendências (comissões/funcionários/impostos)."
+        actions={
+          <button
+            onClick={load}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+            disabled={loading}
+          >
+            {loading ? "Atualizando..." : "Atualizar"}
+          </button>
+        }
+      />
 
       {/* Top cards */}
       <div className="grid gap-4 lg:grid-cols-2">

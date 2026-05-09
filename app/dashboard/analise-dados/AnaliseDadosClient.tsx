@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Download } from "lucide-react";
+import { PageHeader } from "@/components/dashboard";
 import { StatCard, type StatCardTone } from "@/components/ui/dashboard-cards";
 
 function fmtMoneyBR(cents: number) {
@@ -1559,14 +1560,12 @@ export default function AnaliseDadosClient() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="text-xl font-semibold">Análise de dados</div>
-          <div className="text-sm text-neutral-500">Vendas, passageiros, dias, funcionários, clientes e clubes.</div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
+    <div className="mx-auto w-full max-w-6xl space-y-6">
+      <PageHeader
+        title="Análise de dados"
+        description="Vendas, passageiros, dias, funcionários, clientes e clubes."
+        actions={
+          <div className="flex flex-wrap gap-2">
           <select
             className="rounded-xl border bg-white px-3 py-2 text-sm"
             value={monthsBack}
@@ -1660,8 +1659,9 @@ export default function AnaliseDadosClient() {
             <Download className="h-4 w-4" aria-hidden="true" />
             Excel completo
           </button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* HOJE */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

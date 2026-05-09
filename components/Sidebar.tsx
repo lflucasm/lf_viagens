@@ -529,26 +529,35 @@ export default function Sidebar() {
    * UI
    * ========================= */
   return (
-    <aside className="w-64 h-screen border-r border-slate-200 bg-gradient-to-b from-white via-slate-50 to-white flex flex-col overflow-hidden">
+    <aside className="flex h-screen w-64 shrink-0 flex-col overflow-hidden border-r border-slate-200/90 bg-white shadow-[4px_0_32px_-12px_rgba(15,23,42,0.1)]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b bg-white/80 backdrop-blur p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md border border-cyan-300/70 bg-slate-950 text-xs font-bold text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.55)]">
+      <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-b from-white to-slate-50/90 p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white shadow-sm">
             LF
           </div>
-          <span className="text-sm font-semibold tracking-wide text-cyan-300 [text-shadow:0_0_8px_rgba(34,211,238,0.65)]">
-            LF Vianges - Trademiles
-          </span>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-sm font-semibold tracking-tight text-slate-900">LF Viagens</div>
+            <div className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500">
+              TradeMiles
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Usuário */}
       {session && (
-        <div className="border-b px-4 py-3 text-xs">
-          <div className="font-medium">{session.name}</div>
-          <div>Login: {session.login}</div>
-          <div>Time: {session.team}</div>
-          <div className="capitalize">Perfil: {session.role}</div>
+        <div className="mx-2 mt-2 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-2.5 text-xs text-slate-600">
+          <div className="font-medium text-slate-900">{session.name}</div>
+          <div>
+            <span className="text-slate-500">Login:</span> {session.login}
+          </div>
+          <div>
+            <span className="text-slate-500">Time:</span> {session.team}
+          </div>
+          <div className="capitalize">
+            <span className="text-slate-500">Perfil:</span> {session.role}
+          </div>
         </div>
       )}
 
@@ -1061,11 +1070,11 @@ export default function Sidebar() {
         </Accordion>
       </nav>
 
-      <div className="border-t border-slate-200 bg-white/80 backdrop-blur p-2">
+      <div className="border-t border-slate-200/90 bg-gradient-to-t from-slate-50/80 to-white p-2">
         <button
           type="button"
           onClick={doLogout}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
         >
           Sair
         </button>
@@ -1128,7 +1137,7 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "relative block rounded-lg px-3 py-2 pl-5 text-sm transition-colors",
+        "relative block rounded-xl px-3 py-2 pl-5 text-sm transition-colors",
         active
           ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
           : "text-slate-700 hover:bg-slate-100",
@@ -1162,7 +1171,7 @@ function Accordion({
       <button
         onClick={onToggle}
         className={cn(
-          "group w-full flex justify-between items-center px-3 py-2 rounded-lg text-sm font-semibold transition-colors",
+          "group flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors",
           active
             ? "bg-[var(--accent-soft)] text-[var(--accent-text)] ring-1 ring-[var(--accent-border)]"
             : "text-slate-800 hover:bg-slate-100"
@@ -1203,12 +1212,12 @@ function SubAccordion({
   const rowClass = cn(
     isNav
       ? cn(
-          "w-full flex justify-between items-center rounded-lg px-3 py-2 text-sm transition-colors",
+          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors",
           active
             ? "bg-[var(--accent-soft)] text-[var(--accent-text)] ring-1 ring-[var(--accent-border)]"
             : "text-slate-700 hover:bg-slate-100"
         )
-      : "w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded transition-colors"
+      : "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100"
   );
 
   if (href) {

@@ -11,11 +11,13 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthGuard>
-      <div className="min-h-screen w-screen bg-white text-slate-900 overflow-x-hidden">
+      <div className="min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-slate-100 via-slate-50 to-white text-slate-900">
         <div className="flex w-full">
           <Sidebar />
-          <main className="flex-1 min-w-0">
-            <div className="w-full px-4 sm:px-6 lg:px-8 py-6">{children}</div>
+          <main className="dashboard-surface flex min-h-screen min-w-0 flex-1">
+            <div className="mx-auto w-full max-w-[1920px] px-4 py-7 sm:px-6 sm:py-8 lg:px-10 lg:py-9">
+              {children}
+            </div>
           </main>
         </div>
       </div>

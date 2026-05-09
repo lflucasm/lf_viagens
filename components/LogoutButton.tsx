@@ -26,7 +26,7 @@ export default function LogoutButton() {
     <button
       onClick={doLogout}
       disabled={loading}
-      className="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
       title="Sair"
     >
       {loading ? "Saindo..." : "Sair"}
