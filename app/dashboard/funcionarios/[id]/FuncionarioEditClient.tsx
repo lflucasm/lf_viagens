@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type FuncItem = {
   id: string;
@@ -41,9 +42,11 @@ function baseUrl() {
 }
 
 export default function FuncionarioEditClient({ id }: { id: string }) {
+  const router = useRouter();
   const [item, setItem] = useState<FuncItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [msg, setMsg] = useState("");
   const appBase = useMemo(() => baseUrl(), []);
 
@@ -52,6 +55,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   const [employeeId, setEmployeeId] = useState("");
   const [cpf, setCpf] = useState("");
   const [login, setLogin] = useState("");
+  const [team, setTeam] = useState("");
   const [balcaoCommissionPercent, setBalcaoCommissionPercent] = useState("");
   const [employeeCommissionMode, setEmployeeCommissionMode] = useState<"STANDARD" | "MILHEIRO_LUCRO_VENDA">(
     "STANDARD"
@@ -77,6 +81,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setEmployeeId(u.employeeId || "");
       setCpf(u.cpf || "");
       setLogin(u.login || "");
+      setTeam((u.team || "").trim());
       setBalcaoCommissionPercent(
         u.balcaoSellerCommissionPercent == null ? "" : String(u.balcaoSellerCommissionPercent)
       );
@@ -108,6 +113,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
         employeeId: slugifyId(employeeId),
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
+        team: team.trim(),
         employeeCommissionMode,
       };
 
@@ -117,6 +123,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       if (!payload.name) throw new Error("Nome obrigatório.");
       if (!payload.employeeId) throw new Error("ID obrigatório (ex: eduarda.freitas).");
       if (!payload.login) throw new Error("Login obrigatório.");
+      if (!String(payload.team || "").trim()) throw new Error("Time obrigatório.");
 
       if (
         payload.balcaoSellerCommissionPercent !== null &&
@@ -136,12 +143,42 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       const json = await res.json();
       if (!json?.ok) throw new Error(json?.error || "Erro ao salvar.");
 
+      const newTeam = String(json?.data?.team ?? "").trim();
+      if (item.team && newTeam && newTeam !== item.team.trim()) {
+        setMsg("✅ Time alterado. Redirecionando…");
+        router.push("/dashboard/funcionarios");
+        router.refresh();
+        return;
+      }
+
       setItem((prev) => (prev ? { ...prev, ...json.data } : prev));
       setMsg("✅ Dados salvos com sucesso.");
     } catch (e: any) {
       setMsg(e?.message || "Erro");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function excluirFuncionario() {
+    if (!item) return;
+    const ok = window.confirm(
+      `Excluir permanentemente o funcionário "${item.name}" (${item.login})? Esta ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/funcionarios/${item.id}`, { method: "DELETE", cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Não foi possível excluir.");
+      router.push("/dashboard/funcionarios");
+      router.refresh();
+    } catch (e: any) {
+      setMsg(e?.message || "Erro ao excluir.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -280,7 +317,16 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
 
           <div>
             <label className="block text-sm mb-1">Time</label>
-            <input className="w-full rounded-xl border px-3 py-2 bg-slate-50" value={item.team} readOnly />
+            <input
+              className="w-full rounded-xl border px-3 py-2"
+              value={team}
+              onChange={(e) => setTeam(e.target.value)}
+              placeholder="ex: @vias_aereas"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Identificador do time no sistema (mesmo valor usado em sessão e filtros). Ao mudar, o funcionário passa a
+              aparecer apenas no novo time.
+            </p>
           </div>
 
           <button type="submit" disabled={saving} className="rounded-xl bg-black px-4 py-2 text-white disabled:opacity-60">
@@ -338,6 +384,22 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
 
             <button type="button" onClick={trocarSenha} className="rounded-xl border px-4 py-2">
               Alterar senha
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 space-y-3">
+            <div className="text-sm font-semibold text-rose-900">Zona de risco</div>
+            <p className="text-xs text-rose-800/90">
+              Só é possível excluir se não houver cedentes como responsável, leads VIP, eventos de agenda criados por
+              este usuário, etc. O último administrador do time não pode ser excluído nem ter o time alterado.
+            </p>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={excluirFuncionario}
+              className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm text-rose-800 hover:bg-rose-100 disabled:opacity-60"
+            >
+              {deleting ? "Excluindo..." : "Excluir funcionário"}
             </button>
           </div>
         </form>

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EmployeeCommissionMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth-server";
 import { resolveBalcaoSellerCommissionPercent } from "@/lib/balcao-commission";
 
 export const runtime = "nodejs";
@@ -33,11 +34,48 @@ function slugifyId(v: string) {
     .replace(/-+/g, "-");
 }
 
+async function requireAdminSameTeamHeaders() {
+  let sess;
+  try {
+    sess = await requireSession();
+  } catch {
+    return {
+      error: NextResponse.json({ ok: false, error: "Não autenticado." }, { status: 401, headers: noCacheHeaders() }),
+    } as const;
+  }
+  if (sess.role !== "admin") {
+    return {
+      error: NextResponse.json({ ok: false, error: "Sem permissão." }, { status: 403, headers: noCacheHeaders() }),
+    } as const;
+  }
+  return { sess } as const;
+}
+
+/** Não remover o último admin do time (exclusão ou mudança de time). */
+async function assertNotLastAdminOfTeam(team: string, userId: string) {
+  const u = await prisma.user.findFirst({
+    where: { id: userId, team },
+    select: { role: true },
+  });
+  if (!u || u.role !== "admin") return;
+  const others = await prisma.user.count({
+    where: { team, role: "admin", NOT: { id: userId } },
+  });
+  if (others < 1) {
+    const err = new Error("LAST_ADMIN");
+    (err as Error & { code?: string }).code = "LAST_ADMIN";
+    throw err;
+  }
+}
+
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
 
-  const u = await prisma.user.findUnique({
-    where: { id },
+  const gate = await requireAdminSameTeamHeaders();
+  if ("error" in gate) return gate.error;
+
+  const u = await prisma.user.findFirst({
+    where: { id, team: gate.sess.team },
     select: {
       id: true,
       login: true,
@@ -83,13 +121,33 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  const gate = await requireAdminSameTeamHeaders();
+  if ("error" in gate) return gate.error;
+
   const body = await req.json().catch(() => ({}));
+
+  const existing = await prisma.user.findFirst({
+    where: { id, team: gate.sess.team },
+    select: { id: true, team: true, role: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ ok: false, error: "Funcionário não encontrado." }, { status: 404, headers: noCacheHeaders() });
+  }
 
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const login = typeof body?.login === "string" ? body.login.trim().toLowerCase() : "";
   const cpf = typeof body?.cpf === "string" ? onlyDigits(body.cpf) : "";
   const employeeIdRaw = typeof body?.employeeId === "string" ? body.employeeId.trim() : "";
   const employeeId = slugifyId(employeeIdRaw);
+
+  let team: string | undefined = undefined;
+  if ("team" in body && body?.team != null) {
+    const t = typeof body.team === "string" ? body.team.trim() : "";
+    if (!t) {
+      return NextResponse.json({ ok: false, error: "Time inválido." }, { status: 400, headers: noCacheHeaders() });
+    }
+    team = t;
+  }
 
   let balcaoSellerCommissionPercent: number | null | undefined = undefined;
   if ("balcaoSellerCommissionPercent" in body) {
@@ -126,6 +184,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   try {
+    if (team !== undefined && team !== existing.team) {
+      await assertNotLastAdminOfTeam(existing.team, id);
+    }
+
     const updated = await prisma.user.update({
       where: { id },
       data: {
@@ -133,6 +195,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         login,
         cpf: cpf ? cpf : null,
         employeeId,
+        ...(team !== undefined ? { team } : {}),
         ...(balcaoSellerCommissionPercent !== undefined
           ? { balcaoSellerCommissionPercent }
           : {}),
@@ -176,10 +239,97 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       { headers: noCacheHeaders() }
     );
   } catch (e: any) {
+    if (e?.code === "LAST_ADMIN" || e?.message === "LAST_ADMIN") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Não é possível alterar o time: este é o único administrador do time atual.",
+        },
+        { status: 409, headers: noCacheHeaders() }
+      );
+    }
     if (e?.code === "P2002") {
       return NextResponse.json({ ok: false, error: "Login ou ID já está em uso." }, { status: 409, headers: noCacheHeaders() });
     }
     console.error("Erro PATCH /api/funcionarios/[id]:", e);
     return NextResponse.json({ ok: false, error: "Erro ao atualizar funcionário." }, { status: 500, headers: noCacheHeaders() });
+  }
+}
+
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const gate = await requireAdminSameTeamHeaders();
+  if ("error" in gate) return gate.error;
+
+  if (id === gate.sess.id) {
+    return NextResponse.json({ ok: false, error: "Você não pode excluir a si mesmo." }, { status: 400, headers: noCacheHeaders() });
+  }
+
+  const target = await prisma.user.findFirst({
+    where: { id, team: gate.sess.team },
+    select: { id: true },
+  });
+  if (!target) {
+    return NextResponse.json({ ok: false, error: "Funcionário não encontrado." }, { status: 404, headers: noCacheHeaders() });
+  }
+
+  try {
+    await assertNotLastAdminOfTeam(gate.sess.team, id);
+
+    const [
+      cedentes,
+      vipLeads,
+      agendaCriados,
+      auditorias,
+      anotacoes,
+    ] = await Promise.all([
+      prisma.cedente.count({ where: { ownerId: id } }),
+      prisma.vipWhatsappLead.count({ where: { employeeId: id } }),
+      prisma.agendaEvent.count({ where: { createdById: id } }),
+      prisma.agendaAudit.count({ where: { actorId: id } }),
+      prisma.anotacao.count({ where: { createdById: id } }),
+    ]);
+
+    const partes: string[] = [];
+    if (cedentes > 0) partes.push(`${cedentes} cedente(s) como responsável`);
+    if (vipLeads > 0) partes.push(`${vipLeads} lead(s) VIP WhatsApp`);
+    if (agendaCriados > 0) partes.push(`${agendaCriados} evento(s) de agenda criados`);
+    if (auditorias > 0) partes.push(`${auditorias} registro(s) de auditoria da agenda`);
+    if (anotacoes > 0) partes.push(`${anotacoes} anotação(ões)`);
+
+    if (partes.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Não é possível excluir: ${partes.join("; ")}. Resolva os vínculos antes.`,
+        },
+        { status: 409, headers: noCacheHeaders() }
+      );
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({ ok: true }, { headers: noCacheHeaders() });
+  } catch (e: any) {
+    if (e?.code === "LAST_ADMIN" || e?.message === "LAST_ADMIN") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Não é possível excluir o único administrador do time.",
+        },
+        { status: 409, headers: noCacheHeaders() }
+      );
+    }
+    if (e?.code === "P2003") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Não é possível excluir: ainda existem registros vinculados a este usuário no sistema.",
+        },
+        { status: 409, headers: noCacheHeaders() }
+      );
+    }
+    console.error("Erro DELETE /api/funcionarios/[id]:", e);
+    return NextResponse.json({ ok: false, error: "Erro ao excluir funcionário." }, { status: 500, headers: noCacheHeaders() });
   }
 }

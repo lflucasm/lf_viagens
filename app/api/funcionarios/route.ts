@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +43,18 @@ function slugifyId(v: string) {
 // =========================
 export async function GET() {
   try {
+    let sess;
+    try {
+      sess = await requireSession();
+    } catch {
+      return NextResponse.json({ ok: false, error: "Não autenticado." }, { status: 401, headers: noCacheHeaders() });
+    }
+    if (sess.role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Sem permissão." }, { status: 403, headers: noCacheHeaders() });
+    }
+
     const users = await prisma.user.findMany({
+      where: { team: sess.team },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -89,6 +101,16 @@ export async function GET() {
 // =========================
 export async function POST(req: NextRequest) {
   try {
+    let sess;
+    try {
+      sess = await requireSession();
+    } catch {
+      return NextResponse.json({ ok: false, error: "Não autenticado." }, { status: 401, headers: noCacheHeaders() });
+    }
+    if (sess.role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Sem permissão." }, { status: 403, headers: noCacheHeaders() });
+    }
+
     const body = await req.json().catch(() => ({}));
 
     const login = norm(body?.login);
@@ -98,7 +120,7 @@ export async function POST(req: NextRequest) {
     const employeeId = slugifyId(employeeIdRaw);
 
     const email = typeof body?.email === "string" ? body.email.trim() : null;
-    const team = typeof body?.team === "string" && body.team.trim() ? body.team.trim() : "@vias_aereas";
+    const team = sess.team;
     const role: Role = body?.role === "admin" ? "admin" : "staff";
     const password = typeof body?.password === "string" ? body.password : "";
 

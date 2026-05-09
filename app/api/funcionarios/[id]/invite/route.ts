@@ -1,6 +1,7 @@
 // app/api/funcionarios/[id]/invite/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,8 +38,18 @@ async function makeUniqueCode(base: string) {
 export async function POST(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
 
-  const user = await prisma.user.findUnique({
-    where: { id },
+  let sess;
+  try {
+    sess = await requireSession();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Não autenticado." }, { status: 401 });
+  }
+  if (sess.role !== "admin") {
+    return NextResponse.json({ ok: false, error: "Sem permissão." }, { status: 403 });
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id, team: sess.team },
     select: { id: true, name: true },
   });
 
