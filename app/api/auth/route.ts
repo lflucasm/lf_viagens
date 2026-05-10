@@ -14,12 +14,14 @@ const TEAM_JEPHESSON = "@LF.Viagens";
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
-// ✅ cookie pequeno
+// ✅ cookie pequeno (name/email opcionais — UI e /api/session)
 type SessionCookie = {
   id: string;
   login: string;
   role: Role;
   team: string;
+  name?: string;
+  email?: string | null;
 };
 
 type ApiLogin = { action: "login"; login: string; password: string };
@@ -185,6 +187,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           ? sessionUser.role
           : "staff") as Role,
         team: sessionUser.team,
+        name: sessionUser.name,
+        email: sessionUser.email ?? null,
       });
       return res;
     }

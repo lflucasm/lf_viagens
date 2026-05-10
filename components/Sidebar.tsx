@@ -9,7 +9,12 @@ import {
 } from "next/navigation";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { getSession, signOut } from "@/lib/auth";
+import {
+  getSession,
+  signOut,
+  syncSessionFromServer,
+  type Session,
+} from "@/lib/auth";
 import { isAdminRole } from "@/lib/session-roles";
 
 const STRICT_NOQUERY_ACTIVE_PATHS = new Set<string>([
@@ -113,7 +118,37 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const search = useSearchParams();
-  const session = getSession();
+  const [session, setSessionState] = useState<Session | null>(null);
+  const [sidebarBrand, setSidebarBrand] = useState<{
+    companyDisplayName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setSessionState(getSession());
+    let cancelled = false;
+    syncSessionFromServer().then((s) => {
+      if (!cancelled) setSessionState(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/app-settings/public")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j?.ok || !j.data) return;
+        setSidebarBrand({
+          companyDisplayName: String(j.data.companyDisplayName || "LF Viagens"),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* =========================
    * ROTAS
@@ -547,7 +582,9 @@ export default function Sidebar() {
             LF
           </div>
           <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-semibold tracking-tight text-slate-900">LF Viagens</div>
+            <div className="truncate text-sm font-semibold tracking-tight text-slate-900">
+              {sidebarBrand?.companyDisplayName ?? "LF Viagens"}
+            </div>
             <div className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500">
               TradeMiles
             </div>

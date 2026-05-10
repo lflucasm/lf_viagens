@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Instagram, MessageCircle } from "lucide-react";
+import { syncSessionFromServer } from "@/lib/auth";
 
 export default function LoginClient() {
   const [login, setLogin] = useState("");
@@ -21,6 +22,7 @@ export default function LoginClient() {
   }, [params]);
 
   const [publicBrand, setPublicBrand] = useState<{
+    companyDisplayName: string;
     instagramHandle: string;
     whatsappDigits: string;
   } | null>(null);
@@ -32,6 +34,7 @@ export default function LoginClient() {
       .then((j) => {
         if (cancelled || !j?.ok || !j.data) return;
         setPublicBrand({
+          companyDisplayName: String(j.data.companyDisplayName || "LF Viagens"),
           instagramHandle: String(j.data.instagramHandle || "").replace(/^@/, ""),
           whatsappDigits: String(j.data.whatsappDigits || "").replace(/\D+/g, ""),
         });
@@ -42,6 +45,7 @@ export default function LoginClient() {
     };
   }, []);
 
+  const companyLine = publicBrand?.companyDisplayName || "LF Viagens";
   const igHandle = publicBrand?.instagramHandle || "viasaereastrip";
   const waDigits = publicBrand?.whatsappDigits || "5553999760707";
 
@@ -63,6 +67,7 @@ export default function LoginClient() {
         return;
       }
 
+      await syncSessionFromServer();
       router.replace(next);
     } catch {
       setErr("Erro de rede. Tente novamente.");
@@ -139,7 +144,7 @@ export default function LoginClient() {
 
           {/* Rodapé: crédito à empresa criadora */}
           <footer className="pt-3 text-center text-[11px] text-slate-500 space-y-0.5">
-            <p>Ferramenta TradeMiles por Vias Aéreas.</p>
+            <p>Ferramenta TradeMiles por {companyLine}.</p>
           </footer>
         </form>
 

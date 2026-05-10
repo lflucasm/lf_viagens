@@ -35,6 +35,32 @@ export function setSession(session: Session | null) {
   localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
 }
 
+/** Lê o cookie via GET /api/session e espelha no localStorage (sidebar e demais telas). */
+export async function syncSessionFromServer(): Promise<Session | null> {
+  try {
+    const res = await fetch("/api/session", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!json?.ok) return null;
+    if (!json?.hasSession || !json?.user) {
+      setSession(null);
+      return null;
+    }
+    const u = json.user;
+    const session: Session = {
+      id: String(u.id),
+      name: String(u.name || u.login),
+      login: String(u.login),
+      email: u.email ?? null,
+      team: String(u.team),
+      role: u.role,
+    };
+    setSession(session);
+    return session;
+  } catch {
+    return null;
+  }
+}
+
 export async function signOut(): Promise<boolean> {
   try {
     const r = await fetch("/api/auth", {
@@ -101,7 +127,6 @@ export async function signIn(params: {
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json?.ok) return false;
 
-  const session: Session | undefined = json?.data?.session;
-  if (session) setSession(session); // cache para UI
-  return true;
+  const synced = await syncSessionFromServer();
+  return Boolean(synced);
 }

@@ -58,12 +58,13 @@ export async function GET() {
       );
     }
 
+    const login = String(sess.login);
     const user = {
       id: String(sess.id),
-      login: String(sess.login),
+      login,
       team: String(sess.team),
       role: sess.role,
-      name: sess.name ?? "",
+      name: (sess.name && String(sess.name).trim()) || login,
       email: sess.email ?? null,
     };
 
