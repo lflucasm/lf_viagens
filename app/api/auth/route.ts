@@ -9,6 +9,8 @@ export const revalidate = 0;
 type Role = "admin" | "staff" | "developer";
 
 const TEAM_LF = "LF Viagens";
+/** Mesmo identificador de time do admin em produção — necessário para filtrar dados ao testar como developer. */
+const TEAM_JEPHESSON = "@LF.Viagens";
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
@@ -114,7 +116,7 @@ async function seedUsersToDb() {
           login,
           name: u.name,
           email: u.email,
-          team: TEAM_LF,
+          team: login === norm("jephesson") ? TEAM_JEPHESSON : TEAM_LF,
           role: u.role,
           passwordHash: sha256(u.password),
         },
@@ -165,14 +167,24 @@ export async function POST(req: Request): Promise<NextResponse> {
         return NextResponse.json({ ok: false, error: "Senha inválida" }, { status: 401, headers: noCacheHeaders() });
       }
 
+      let sessionUser = dbUser;
+      if (login === norm("jephesson")) {
+        await prisma.user.update({
+          where: { login },
+          data: { team: TEAM_JEPHESSON },
+        });
+        const fresh = await prisma.user.findUnique({ where: { login } });
+        if (fresh) sessionUser = fresh;
+      }
+
       const res = NextResponse.json({ ok: true }, { headers: noCacheHeaders() });
       setSessionCookie(res, {
-        id: dbUser.id,
-        login: dbUser.login,
-        role: (dbUser.role === "admin" || dbUser.role === "staff" || dbUser.role === "developer"
-          ? dbUser.role
+        id: sessionUser.id,
+        login: sessionUser.login,
+        role: (sessionUser.role === "admin" || sessionUser.role === "staff" || sessionUser.role === "developer"
+          ? sessionUser.role
           : "staff") as Role,
-        team: dbUser.team,
+        team: sessionUser.team,
       });
       return res;
     }

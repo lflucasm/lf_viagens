@@ -5,9 +5,8 @@
  * - Realoca FKs com onDelete Restrict antes do DELETE.
  * - Remove links/leads VIP WhatsApp do funcionário (leads em cascata removem pagamentos).
  * - Define `lucas_fellype` como admin com time "LF Viagens".
- * - Define `jephesson` como developer com time "LF Viagens".
- * - Migra usuários com time legado (ex.: `@vias_aereas`) para "LF Viagens" — único time
- *   usado pelo sistema.
+ * - Define `jephesson` como developer com time "@LF.Viagens" (alinhado ao admin no Vercel).
+ * - Migra usuários com time legado `@vias_aereas` para "LF Viagens" (não altera quem já está em @LF.Viagens).
  *
  * Uso:
  *   DATABASE_URL="postgresql://..." node scripts/remove-demo-staff-and-normalize.mjs
@@ -23,15 +22,9 @@ const REMOVE_LOGINS = ["eduarda", "paola", "lucas"];
 const ADMIN_LOGIN = "lucas_fellype";
 const DEV_LOGIN = "jephesson";
 const TEAM_LF = "LF Viagens";
-/** Valores antigos de `team` no banco; todo mundo deve ficar em TEAM_LF. */
-const LEGACY_TEAMS = [
-  "@vias_aereas",
-  "vias_aereas",
-  "@LF.Viagens",
-  "@lf.viagens",
-  "LF.Viagens",
-  "@LF Viagens",
-];
+const TEAM_JEPHESSON = "@LF.Viagens";
+/** Times legados a normalizar para TEAM_LF (não incluir @LF.Viagens — time válido em produção). */
+const LEGACY_TEAMS = ["@vias_aereas", "vias_aereas"];
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -119,7 +112,7 @@ async function main() {
     });
     await prisma.user.update({
       where: { login: norm(DEV_LOGIN) },
-      data: { team: TEAM_LF, role: "developer" },
+      data: { team: TEAM_JEPHESSON, role: "developer" },
     });
 
     const migrated = await prisma.user.updateMany({
