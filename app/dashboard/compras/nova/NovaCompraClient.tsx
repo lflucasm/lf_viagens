@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type LoyaltyProgram = "LATAM" | "SMILES" | "LIVELO" | "ESFERA";
 
@@ -79,6 +79,12 @@ type PurchaseDraft = {
   items: PurchaseItem[];
 };
 
+const OPERATIONAL_HOUSE_IDENT_PREFIX = "ESTOQUE-OP-";
+
+function isOperationalHouseCedente(c: Cedente | null | undefined): boolean {
+  return !!c?.identificador?.startsWith(OPERATIONAL_HOUSE_IDENT_PREFIX);
+}
+
 type ClubMeta = {
   program: LoyaltyProgram;
   tierK: number;
@@ -112,24 +118,6 @@ function clubMilheiroEstimateCents(meta: ClubMeta) {
 function fmtMoneyBR(cents: number) {
   const v = (cents || 0) / 100;
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-function normalizeScore(v: unknown) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(10, Math.round(n * 100) / 100));
-}
-function fmtScore(v: unknown) {
-  return normalizeScore(v).toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  });
-}
-function scoreBadgeClass(v: unknown) {
-  const s = normalizeScore(v);
-  if (s >= 8) return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (s >= 6) return "border-amber-200 bg-amber-50 text-amber-700";
-  if (s >= 4) return "border-orange-200 bg-orange-50 text-orange-700";
-  return "border-rose-200 bg-rose-50 text-rose-700";
 }
 function clampInt(n: any) {
   const x = Number(n);
@@ -260,17 +248,6 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function norm(v?: string) {
-  return (v || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-function onlyDigits(v?: string) {
-  return (v || "").replace(/\D+/g, "");
-}
-
 const PROGRAM_LABEL: Record<LoyaltyProgram, string> = {
   LATAM: "LATAM",
   SMILES: "Smiles",
@@ -375,10 +352,8 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
   const routeId = Array.isArray(routeIdRaw) ? routeIdRaw[0] : routeIdRaw;
   const purchaseIdFinal = purchaseId || routeId;
 
-  const [query, setQuery] = useState("");
-  const [allCedentes, setAllCedentes] = useState<Cedente[]>([]);
+  const router = useRouter();
   const [cedenteSel, setCedenteSel] = useState<Cedente | null>(null);
-  const [loadingCed, setLoadingCed] = useState(false);
 
   const [draft, setDraft] = useState<PurchaseDraft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -423,81 +398,35 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
     })();
   }, [purchaseIdFinal]);
 
-  // ===== load cedentes
+  // ===== /compras/nova: cria compra no estoque operacional (sem escolher cedente)
   useEffect(() => {
-    let alive = true;
+    if (purchaseIdFinal) return;
 
-    const load = async () => {
-      setLoadingCed(true);
+    let cancelled = false;
+
+    (async () => {
       try {
-        const out = await api<{ ok: true; data: Cedente[] }>(
-          `/api/cedentes/approved`
-        );
-        if (!alive) return;
-        setAllCedentes(Array.isArray(out?.data) ? out.data : []);
+        setSaving(true);
+        setError(null);
+        const out = await api<{ compra: { id: string } }>(`/api/compras`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        const id = out?.compra?.id;
+        if (!id) throw new Error("Resposta inválida ao criar compra.");
+        if (!cancelled) router.replace(`/dashboard/compras/${id}`);
       } catch (e: any) {
-        console.error("Falha ao carregar cedentes aprovados:", e);
-        if (!alive) return;
-        setAllCedentes([]);
+        if (!cancelled) setError(e?.message || "Falha ao abrir compra.");
       } finally {
-        if (alive) setLoadingCed(false);
+        if (!cancelled) setSaving(false);
       }
-    };
+    })();
 
-    load();
     return () => {
-      alive = false;
+      cancelled = true;
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
-  }, []);
-
-  const cedentes = useMemo(() => {
-    const s = norm(query);
-    if (s.length < 2) return [];
-
-    const dig = onlyDigits(query);
-
-    return allCedentes
-      .filter((c) => {
-        const nome = norm(c.nomeCompleto);
-        const ident = norm(c.identificador);
-        const cpfDig = onlyDigits(c.cpf);
-
-        if (dig.length >= 2) {
-          return (
-            cpfDig.includes(dig) ||
-            onlyDigits(c.identificador).includes(dig) ||
-            nome.includes(s) ||
-            ident.includes(s)
-          );
-        }
-
-        return nome.includes(s) || ident.includes(s) || cpfDig.includes(s);
-      })
-      .slice(0, 30);
-  }, [allCedentes, query]);
-
-  async function createDraft() {
-    if (!cedenteSel) return;
-    setError(null);
-    setSaving(true);
-
-    try {
-      const out = await api<{ ok: true; compra: any }>(`/api/compras`, {
-        method: "POST",
-        body: JSON.stringify({ cedenteId: cedenteSel.id }),
-      });
-
-      const p = normalizeDraft(out.compra, cedenteSel);
-      const totals = computeTotals(p);
-
-      setDraft({ ...p, ...totals });
-    } catch (e: any) {
-      setError(e?.message || "Falha ao criar compra.");
-    } finally {
-      setSaving(false);
-    }
-  }
+  }, [purchaseIdFinal, router]);
 
   function scheduleAutosave(next: PurchaseDraft) {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -778,13 +707,38 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computedExpected, expectedAuto, isReleased]);
 
+  if (!purchaseIdFinal) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center px-4">
+        <div className="text-center text-sm text-gray-600 space-y-2">
+          {error ? (
+            <>
+              <p className="text-red-600">{error}</p>
+              <button
+                type="button"
+                className="text-blue-600 underline"
+                onClick={() => window.location.reload()}
+              >
+                Tentar novamente
+              </button>
+            </>
+          ) : (
+            <p>Abrindo nova compra…</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Nova compra</h1>
           <p className="text-sm text-gray-600">
-            Crie a compra em rascunho e só aplique no saldo ao <b>LIBERAR</b>.
+            Pontos, clubes e transferências entram no <b>estoque operacional</b> do
+            time — sem escolher CPF de cedente. Rascunho; ao <b>LIBERAR</b>, o saldo é
+            aplicado.
           </p>
 
           {draft && (
@@ -827,125 +781,19 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         </div>
       )}
 
-      {/* 1) Cedente */}
-      <div className="rounded-xl border p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-medium">1) Cedente</h2>
-          <span className="text-xs text-gray-500">
-            Selecione e gere o ID único
-          </span>
+      {draft && cedenteSel && isOperationalHouseCedente(cedenteSel) && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          Lançamento no estoque: <span className="font-medium">{cedenteSel.nomeCompleto}</span> ·{" "}
+          <span className="font-mono">{cedenteSel.identificador}</span>
         </div>
+      )}
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="text-sm text-gray-600">Buscar cedente</label>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Nome, CPF, identificador..."
-              disabled={!!draft}
-            />
-
-            {loadingCed && (
-              <div className="mt-1 text-xs text-gray-500">
-                Carregando cedentes aprovados…
-              </div>
-            )}
-
-            {!draft &&
-              query.trim().length >= 2 &&
-              cedentes.length === 0 &&
-              !loadingCed && (
-                <div className="mt-2 text-xs text-gray-500">
-                  Nenhum cedente encontrado.
-                </div>
-              )}
-
-            {!draft && cedentes.length > 0 && (
-              <div className="mt-2 max-h-56 overflow-auto rounded-md border">
-                {cedentes.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setCedenteSel(c)}
-                    className={`flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                      cedenteSel?.id === c.id ? "bg-gray-50" : ""
-                    }`}
-                  >
-                    <div>
-                      <div className="font-medium">{c.nomeCompleto}</div>
-                      <div className="text-xs text-gray-500">
-                        CPF: {c.cpf} · ID: {c.identificador}
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500 text-right">
-                      <div
-                        className={`inline-flex rounded-full border px-2 py-0.5 ${scoreBadgeClass(
-                          c.scoreMedia
-                        )}`}
-                      >
-                        Score {fmtScore(c.scoreMedia)}
-                      </div>
-                      <div>LATAM {c.pontosLatam}</div>
-                      <div>SMILES {c.pontosSmiles}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-xl bg-gray-50 p-4">
-            <div className="text-sm font-medium">Selecionado</div>
-
-            {!cedenteSel && (
-              <div className="text-sm text-gray-600">Nenhum.</div>
-            )}
-
-            {cedenteSel && (
-              <div className="text-sm text-gray-700 space-y-1">
-                <div className="font-medium">{cedenteSel.nomeCompleto}</div>
-                <div className="text-xs text-gray-500">
-                  CPF {cedenteSel.cpf} · {cedenteSel.identificador}
-                </div>
-                <div className="text-xs">
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 ${scoreBadgeClass(
-                      cedenteSel.scoreMedia
-                    )}`}
-                  >
-                    Score médio {fmtScore(cedenteSel.scoreMedia)}/10
-                  </span>
-                </div>
-                <div className="text-xs text-gray-500">
-                  Saldos atuais: LATAM {cedenteSel.pontosLatam} · SMILES{" "}
-                  {cedenteSel.pontosSmiles} · LIVELO {cedenteSel.pontosLivelo} ·
-                  ESFERA {cedenteSel.pontosEsfera}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={createDraft}
-                disabled={!cedenteSel || saving || !!draft}
-                className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
-              >
-                {draft ? "Compra criada" : "Gerar compra (ID único)"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2) Config + Resumo */}
+      {/* 1) Config + Resumo */}
       {draft && (
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2 rounded-xl border p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-medium">2) Configuração</h2>
+              <h2 className="font-medium">1) Configuração</h2>
               <div className="text-xs text-gray-500">
                 Ajustes gerais da compra (comissão, taxa, etc.)
               </div>
@@ -1072,7 +920,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
       {draft && (
         <div className="rounded-xl border p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-medium">3) Clubes (assinaturas)</h2>
+            <h2 className="font-medium">2) Clubes (assinaturas)</h2>
 
             <button
               type="button"
@@ -1363,7 +1211,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         <div className="rounded-xl border p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="font-medium">4) Itens (pontos + custos)</h2>
+              <h2 className="font-medium">3) Itens (pontos + custos)</h2>
               <div className="text-xs text-gray-500">
                 Layout em cartões (não corta texto). Em telas grandes, fica bem
                 alinhado.
@@ -1423,7 +1271,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         <div className="rounded-xl border p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-medium">
-              5) Saldo final esperado (aplica no LIBERAR)
+              4) Saldo final esperado (aplica no LIBERAR)
             </h2>
             <div className="text-xs text-gray-500">
               Auto = atual + deltas dos itens/clubes
@@ -1527,7 +1375,10 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
           </div>
 
           <div className="text-xs text-gray-600">
-            Ao clicar em <b>LIBERAR</b>, os pontos do cedente serão atualizados para{" "}
+            Ao clicar em <b>LIBERAR</b>,{" "}
+            {isOperationalHouseCedente(cedenteSel)
+              ? "o estoque operacional será atualizado para "
+              : "os pontos do cedente serão atualizados para "}
             <b>esses saldos</b>.
           </div>
         </div>

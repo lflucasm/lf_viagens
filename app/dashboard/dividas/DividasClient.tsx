@@ -142,7 +142,7 @@ export default function DividasClient() {
     >
   >({});
 
-  const [meRole, setMeRole] = useState<"admin" | "staff" | null>(null);
+  const [meRole, setMeRole] = useState<"admin" | "staff" | "developer" | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [payingGroupKey, setPayingGroupKey] = useState<string | null>(null);
 

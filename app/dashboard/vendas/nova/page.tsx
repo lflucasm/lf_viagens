@@ -9,7 +9,7 @@ type Sess = {
   login: string;
   name?: string;
   team: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "developer";
 };
 
 function b64urlDecode(input: string) {

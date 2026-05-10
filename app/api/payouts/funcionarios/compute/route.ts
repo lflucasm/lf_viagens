@@ -7,6 +7,7 @@ import {
   milheiroLucroVendaCents,
   todayISORecife,
 } from "@/lib/payouts/employeePayouts";
+import { resolveMilheiroSellerPayoutPercent } from "@/lib/milheiro-seller-payout-percent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -866,13 +867,23 @@ export async function POST(req: Request) {
       },
     });
 
+    const sellerPctRows = await prisma.user.findMany({
+      where: { id: { in: computedUserIds } },
+      select: { id: true, milheiroSellerPayoutPercent: true },
+    });
+    const pctMap = Object.fromEntries(
+      sellerPctRows.map((u) => [u.id, resolveMilheiroSellerPayoutPercent(u.milheiroSellerPayoutPercent)])
+    );
+
     // 9) upsert preservando pagos
     for (const userId of computedUserIds) {
       const agg = byUser[userId];
       const existing = existingByUserId.get(userId);
       if (existing?.paidById) continue;
 
-      const mLv = safeInt(agg.milheiroLucroVendaCents, 0);
+      const rawLv = safeInt(agg.milheiroLucroVendaCents, 0);
+      const pct = pctMap[userId] ?? 100;
+      const mLv = Math.round((rawLv * pct) / 100);
       const gross = mLv;
       const tax = taxByPercent(gross, taxPercent);
       const fee = safeInt(agg.feeCents, 0);
@@ -893,6 +904,8 @@ export async function POST(req: Request) {
             commission2Cents: 0,
             commission3RateioCents: 0,
             milheiroLucroVendaCents: mLv,
+            milheiroLucroFullCents: rawLv,
+            milheiroSellerPayoutPercent: pct,
             salesCount: safeInt(agg.salesCount, 0),
             taxPercent,
             basis,
@@ -908,6 +921,8 @@ export async function POST(req: Request) {
             commission2Cents: 0,
             commission3RateioCents: 0,
             milheiroLucroVendaCents: mLv,
+            milheiroLucroFullCents: rawLv,
+            milheiroSellerPayoutPercent: pct,
             salesCount: safeInt(agg.salesCount, 0),
             taxPercent,
             basis,

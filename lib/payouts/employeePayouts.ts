@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { LoyaltyProgram, Settings } from "@prisma/client";
+import { resolveMilheiroSellerPayoutPercent } from "@/lib/milheiro-seller-payout-percent";
 
 /** Subconjunto de Settings usado só para custo milheiro por programa (compras sem custo no DB). */
 export type SettingsMilheiroRates = Pick<
@@ -287,6 +288,17 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
 
   const userIds = Object.keys(byUser);
 
+  const sellerRows =
+    userIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, milheiroSellerPayoutPercent: true },
+        })
+      : [];
+  const pctByUser = Object.fromEntries(
+    sellerRows.map((u) => [u.id, resolveMilheiroSellerPayoutPercent(u.milheiroSellerPayoutPercent)])
+  );
+
   // remove payouts “lixo” não pagos e sem movimento
   await prisma.employeePayout.deleteMany({
     where: {
@@ -300,7 +312,9 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
   // upsert
   for (const userId of userIds) {
     const a = byUser[userId];
-    const gross = a.milheiroLucroVendaCents;
+    const rawLv = a.milheiroLucroVendaCents;
+    const pct = pctByUser[userId] ?? 100;
+    const gross = Math.round((rawLv * pct) / 100);
 
     const tax = tax8(gross);
     const net = gross - tax + a.feeCents;
@@ -319,7 +333,9 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
           commission1Cents: 0,
           commission2Cents: 0,
           commission3RateioCents: 0,
-          milheiroLucroVendaCents: a.milheiroLucroVendaCents,
+          milheiroLucroVendaCents: gross,
+          milheiroLucroFullCents: rawLv,
+          milheiroSellerPayoutPercent: pct,
           salesCount: a.salesCount,
           taxPercent: 8,
         },
@@ -333,7 +349,9 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
           commission1Cents: 0,
           commission2Cents: 0,
           commission3RateioCents: 0,
-          milheiroLucroVendaCents: a.milheiroLucroVendaCents,
+          milheiroLucroVendaCents: gross,
+          milheiroLucroFullCents: rawLv,
+          milheiroSellerPayoutPercent: pct,
           salesCount: a.salesCount,
           taxPercent: 8,
         },

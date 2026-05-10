@@ -7,7 +7,7 @@ export type Session = {
   login: string;
   email?: string | null;
   team: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "developer";
 };
 
 const AUTH_SESSION_KEY = "auth_session";

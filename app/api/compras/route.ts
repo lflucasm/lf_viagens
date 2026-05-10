@@ -1,8 +1,10 @@
 // app/api/compras/route.ts
 import { prisma } from "@/lib/prisma";
-import { ok, badRequest, serverError } from "@/lib/api";
+import { ok, badRequest, serverError, unauthorized } from "@/lib/api";
 import { nextNumeroCompra } from "@/lib/compraNumero";
 import { recomputeCompra } from "@/lib/compras";
+import { getSessionServer } from "@/lib/auth-server";
+import { ensureOperationalHouseCedente } from "@/lib/house-cedente";
 import { Prisma, LoyaltyProgram } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,8 @@ function toPurchaseRow(
     // No Prisma/DB o campo é "ciaAerea"
     ciaProgram: (p.ciaAerea ?? (p as any).ciaProgram ?? null) as LoyaltyProgram | null,
     ciaPointsTotal: asInt((p as any).ciaPointsTotal ?? p.pontosCiaTotal ?? 0),
+
+    cedenteId: String(p.cedenteId || ""),
 
     // totals (compat com nomes diferentes)
     totalCostCents: asInt((p as any).totalCostCents ?? p.totalCost ?? p.totalCents ?? 0),
@@ -224,11 +228,30 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionServer();
+    if (!session?.id || !session.team) {
+      return unauthorized("Faça login novamente.");
+    }
+
     const body = await req.json().catch(() => null);
     if (!body) return badRequest("JSON inválido.");
 
-    const cedenteId = String(body.cedenteId || "");
-    if (!cedenteId) return badRequest("cedenteId é obrigatório.");
+    const rawCedenteId = String(body.cedenteId || "").trim();
+
+    let cedenteId: string;
+    if (rawCedenteId) {
+      const ced = await prisma.cedente.findFirst({
+        where: { id: rawCedenteId },
+        include: { owner: { select: { team: true } } },
+      });
+      if (!ced) return badRequest("Cedente não encontrado.");
+      if (ced.owner.team !== session.team) {
+        return badRequest("Cedente não pertence ao seu time.");
+      }
+      cedenteId = ced.id;
+    } else {
+      cedenteId = await ensureOperationalHouseCedente(prisma, session.team, session.id);
+    }
 
     const numero = await nextNumeroCompra();
 

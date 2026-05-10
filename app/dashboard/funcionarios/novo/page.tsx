@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function onlyDigits(v: string) {
   return (v || "").replace(/\D+/g, "").slice(0, 11);
@@ -28,22 +28,34 @@ export default function NovoFuncionarioPage() {
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState("");
-  const [employeeId, setEmployeeId] = useState(""); // ✅ NOVO: ID (primeiro.ultimo)
+  const [employeeId, setEmployeeId] = useState("");
   const [cpf, setCpf] = useState("");
   const [login, setLogin] = useState("");
 
-  const TEAM_FIXED = "@vias_aereas";
-  const [team] = useState(TEAM_FIXED);
+  const [team, setTeam] = useState("LF Viagens");
+  const [milheiroPayoutPercent, setMilheiroPayoutPercent] = useState("");
 
   const [password, setPassword] = useState("");
 
-  // ✅ convite gerado ao cadastrar
   const [inviteCode, setInviteCode] = useState<string>("");
   const appBase = useMemo(() => baseUrl(), []);
   const inviteLink = useMemo(() => {
     if (!inviteCode) return "";
     return `${appBase}/convite/${inviteCode}`;
   }, [appBase, inviteCode]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/session", { cache: "no-store" });
+        const j = await r.json().catch(() => ({}));
+        const t = String(j?.user?.team || "").trim();
+        if (t) setTeam(t);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
 
   async function copiarConvite() {
     try {
@@ -60,20 +72,33 @@ export default function NovoFuncionarioPage() {
     try {
       setSaving(true);
 
-      const payload = {
+      const milRaw = milheiroPayoutPercent.trim();
+      const payload: Record<string, unknown> = {
         name: name.trim(),
-        employeeId: slugifyId(employeeId), // ✅
+        employeeId: slugifyId(employeeId),
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
-        team,
+        team: team.trim(),
         password,
       };
+      if (milRaw !== "") {
+        payload.milheiroSellerPayoutPercent = Number(milRaw.replace(",", "."));
+      }
 
       if (!payload.name) throw new Error("Nome obrigatório.");
       if (!payload.employeeId) throw new Error("ID obrigatório (ex: eduarda.freitas).");
       if (!payload.login) throw new Error("Login obrigatório.");
-      if (!payload.password || payload.password.trim().length < 6) {
+      if (!String(payload.team || "").trim()) throw new Error("Time obrigatório.");
+      if (!payload.password || String(payload.password).trim().length < 6) {
         throw new Error("Senha deve ter pelo menos 6 caracteres.");
+      }
+      if (
+        payload.milheiroSellerPayoutPercent !== undefined &&
+        (!Number.isFinite(payload.milheiroSellerPayoutPercent as number) ||
+          (payload.milheiroSellerPayoutPercent as number) < 0 ||
+          (payload.milheiroSellerPayoutPercent as number) > 100)
+      ) {
+        throw new Error("Percentual sobre milheiro: use 0 a 100.");
       }
 
       const res = await fetch("/api/funcionarios", {
@@ -87,8 +112,8 @@ export default function NovoFuncionarioPage() {
 
       setInviteCode(json?.data?.inviteCode ?? "");
       alert("Funcionário criado ✅");
-    } catch (e: any) {
-      alert(e?.message || "Erro");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Erro");
     } finally {
       setSaving(false);
     }
@@ -104,14 +129,13 @@ export default function NovoFuncionarioPage() {
           <input className="w-full rounded-xl border px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
 
-        {/* ✅ NOVO: ID */}
         <div>
           <label className="block text-sm mb-1">ID do funcionário (primeiro.ultimo)</label>
           <input
             className="w-full rounded-xl border px-3 py-2"
             value={employeeId}
             onChange={(e) => setEmployeeId(slugifyId(e.target.value))}
-            placeholder="ex: eduarda.freitas"
+            placeholder="ex: maria.silva"
           />
           <div className="text-xs text-slate-500 mt-1">
             Esse ID será usado para vincular cedentes e para gerar o link “bonito”.
@@ -135,7 +159,25 @@ export default function NovoFuncionarioPage() {
 
         <div>
           <label className="block text-sm mb-1">Time</label>
-          <input className="w-full rounded-xl border px-3 py-2 bg-slate-50" value={team} readOnly />
+          <input
+            className="w-full rounded-xl border px-3 py-2"
+            value={team}
+            onChange={(e) => setTeam(e.target.value)}
+            placeholder="LF Viagens"
+          />
+          <div className="text-xs text-slate-500 mt-1">Preenchido com o time da sua sessão; ajuste se necessário.</div>
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1">% pagamento sobre lucro milheiro (opcional)</label>
+          <input
+            className="w-full rounded-xl border px-3 py-2"
+            inputMode="decimal"
+            placeholder="Vazio = 100%"
+            value={milheiroPayoutPercent}
+            onChange={(e) => setMilheiroPayoutPercent(e.target.value)}
+          />
+          <div className="text-xs text-slate-500 mt-1">Percentual do spread diário que entra na comissão do vendedor.</div>
         </div>
 
         <div>
@@ -149,7 +191,6 @@ export default function NovoFuncionarioPage() {
           />
         </div>
 
-        {/* ✅ Link de convite aparece após cadastrar */}
         <div className="rounded-2xl border p-3">
           <div className="text-sm font-semibold mb-2">Link de convite</div>
           <div className="flex gap-2">
@@ -174,11 +215,15 @@ export default function NovoFuncionarioPage() {
           {saving ? "Salvando..." : "Cadastrar funcionário"}
         </button>
 
-        {inviteCode && (
-          <button type="button" className="rounded-xl border px-4 py-2 w-full" onClick={() => (window.location.href = "/dashboard/funcionarios")}>
+        {inviteCode ? (
+          <button
+            type="button"
+            className="rounded-xl border px-4 py-2 w-full"
+            onClick={() => (window.location.href = "/dashboard/funcionarios")}
+          >
             Ir para funcionários
           </button>
-        )}
+        ) : null}
       </form>
     </div>
   );

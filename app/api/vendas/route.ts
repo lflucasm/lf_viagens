@@ -5,6 +5,7 @@ import { Prisma, SalePaymentStatus } from "@prisma/client";
 import { triggerEmployeePayoutAutoCompute } from "@/lib/payouts/autoCompute";
 import { calcPointsValueCents, clampInt, formatSaleNumber, pointsField } from "../_helpers/sales";
 import { deductInventoryOnSale, getAvgCostMilheiroCentsForSale } from "@/lib/program-inventory";
+import { isOperationalRole } from "@/lib/session-roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ type Sess = {
   id: string;
   login: string;
   team: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "developer";
   name?: string;
   email?: string | null;
 };
@@ -32,7 +33,7 @@ function readSessionCookie(raw?: string): Sess | null {
   try {
     const parsed = JSON.parse(b64urlDecode(raw)) as Partial<Sess>;
     if (!parsed?.id || !parsed?.login || !parsed?.team || !parsed?.role) return null;
-    if (parsed.role !== "admin" && parsed.role !== "staff") return null;
+    if (!isOperationalRole(parsed.role)) return null;
     return parsed as Sess;
   } catch {
     return null;

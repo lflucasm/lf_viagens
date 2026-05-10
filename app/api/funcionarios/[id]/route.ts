@@ -82,6 +82,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       cpf: true,
       employeeId: true,
       balcaoSellerCommissionPercent: true,
+      milheiroSellerPayoutPercent: true,
       role: true,
       team: true,
       createdAt: true,
@@ -105,6 +106,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         balcaoSellerCommissionPercentEffective: resolveBalcaoSellerCommissionPercent(
           u.balcaoSellerCommissionPercent
         ),
+        milheiroSellerPayoutPercent: u.milheiroSellerPayoutPercent ?? null,
         team: u.team,
         role: u.role,
         createdAt: u.createdAt,
@@ -146,6 +148,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     team = t;
   }
 
+  let milheiroSellerPayoutPercent: number | null | undefined = undefined;
+  if ("milheiroSellerPayoutPercent" in body) {
+    const raw = body?.milheiroSellerPayoutPercent;
+    if (raw === null || raw === "") {
+      milheiroSellerPayoutPercent = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        return NextResponse.json(
+          { ok: false, error: "Percentual sobre milheiro inválido." },
+          { status: 400, headers: noCacheHeaders() }
+        );
+      }
+      milheiroSellerPayoutPercent = Math.max(0, Math.min(100, Math.round(n)));
+    }
+  }
+
   let balcaoSellerCommissionPercent: number | null | undefined = undefined;
   if ("balcaoSellerCommissionPercent" in body) {
     const raw = body?.balcaoSellerCommissionPercent;
@@ -183,6 +202,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         ...(balcaoSellerCommissionPercent !== undefined
           ? { balcaoSellerCommissionPercent }
           : {}),
+        ...(milheiroSellerPayoutPercent !== undefined ? { milheiroSellerPayoutPercent } : {}),
       },
       select: {
         id: true,
@@ -191,6 +211,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         cpf: true,
         employeeId: true,
         balcaoSellerCommissionPercent: true,
+        milheiroSellerPayoutPercent: true,
         team: true,
         role: true,
         createdAt: true,
@@ -211,6 +232,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           balcaoSellerCommissionPercentEffective: resolveBalcaoSellerCommissionPercent(
             updated.balcaoSellerCommissionPercent
           ),
+          milheiroSellerPayoutPercent: updated.milheiroSellerPayoutPercent ?? null,
           team: updated.team,
           role: updated.role,
           createdAt: updated.createdAt,

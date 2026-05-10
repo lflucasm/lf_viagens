@@ -18,14 +18,12 @@ import { PageHeader, SectionCard } from "@/components/dashboard";
 import LogoutButton from "@/components/LogoutButton";
 import { ShortcutCard } from "@/components/ui/dashboard-cards";
 
-type AgendaEvent = {
+type ViagemHoje = {
   id: string;
-  type: "SHIFT" | "ABSENCE";
-  dateISO: string;
-  startHHMM: string;
-  endHHMM: string;
-  note: string;
-  user: { id: string; name: string; login: string };
+  locator: string;
+  departureDate: string | null;
+  program: string;
+  cliente: { nome: string; identificador: string };
 };
 
 type PresenceMember = {
@@ -35,17 +33,6 @@ type PresenceMember = {
   updatedAt: string;
   isOnline: boolean;
 };
-
-function mesBRRecife(d = new Date()) {
-  const parts = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Recife",
-    month: "2-digit",
-    year: "numeric",
-  }).formatToParts(d);
-  const month = parts.find((p) => p.type === "month")?.value ?? "01";
-  const year = parts.find((p) => p.type === "year")?.value ?? "2026";
-  return `${month}/${year}`;
-}
 
 function todayISORecife(d = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -60,56 +47,37 @@ function todayISORecife(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
-function minutesNowRecife(): number {
-  const t = new Date().toLocaleTimeString("en-GB", {
-    timeZone: "America/Recife",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const [hh, mm] = t.split(":").map((x) => Number(x));
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 0;
-  return hh * 60 + mm;
-}
-
-function parseHHMMToMin(s: string) {
-  const m = /^(\d{2}):(\d{2})$/.exec(String(s || "").trim());
-  if (!m) return NaN;
-  return Number(m[1]) * 60 + Number(m[2]);
-}
-
 export default function DashboardHomeClient({
   session,
 }: {
   session: { id: string; login: string; name?: string; team: string; role: string };
 }) {
-  const [agendaLoading, setAgendaLoading] = useState(true);
-  const [agendaError, setAgendaError] = useState<string | null>(null);
-  const [todayEvents, setTodayEvents] = useState<AgendaEvent[]>([]);
+  const [viagensLoading, setViagensLoading] = useState(true);
+  const [viagensError, setViagensError] = useState<string | null>(null);
+  const [viagensHoje, setViagensHoje] = useState<ViagemHoje[]>([]);
 
   const [presenceLoading, setPresenceLoading] = useState(true);
   const [presenceError, setPresenceError] = useState<string | null>(null);
   const [members, setMembers] = useState<PresenceMember[]>([]);
 
   const todayISO = useMemo(() => todayISORecife(), []);
-  const mesBR = useMemo(() => mesBRRecife(), []);
-
-  const loadAgenda = useCallback(async () => {
-    setAgendaLoading(true);
-    setAgendaError(null);
+  const loadViagensHoje = useCallback(async () => {
+    setViagensLoading(true);
+    setViagensError(null);
     try {
-      const res = await fetch(`/api/agenda?mes=${encodeURIComponent(mesBR)}`, { cache: "no-store" });
+      const qs = new URLSearchParams({ from: todayISO, days: "1" });
+      const res = await fetch(`/api/agenda-viagens?${qs}`, { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
-      if (!json?.ok) throw new Error(json?.error || "Erro ao carregar agenda.");
-      const events: AgendaEvent[] = json.data?.events || [];
-      setTodayEvents(events.filter((e) => e.dateISO === todayISO));
+      if (!json?.ok) throw new Error(json?.error || "Erro ao carregar viagens.");
+      const trips = (json.trips || []) as ViagemHoje[];
+      setViagensHoje(trips);
     } catch (e) {
-      setAgendaError(e instanceof Error ? e.message : "Erro ao carregar agenda.");
-      setTodayEvents([]);
+      setViagensError(e instanceof Error ? e.message : "Erro ao carregar viagens.");
+      setViagensHoje([]);
     } finally {
-      setAgendaLoading(false);
+      setViagensLoading(false);
     }
-  }, [mesBR, todayISO]);
+  }, [todayISO]);
 
   const loadPresence = useCallback(async () => {
     setPresenceLoading(true);
@@ -136,9 +104,9 @@ export default function DashboardHomeClient({
   }, []);
 
   useEffect(() => {
-    loadAgenda();
+    loadViagensHoje();
     loadPresence();
-  }, [loadAgenda, loadPresence]);
+  }, [loadViagensHoje, loadPresence]);
 
   useEffect(() => {
     ping();
@@ -152,8 +120,6 @@ export default function DashboardHomeClient({
     }, 45_000);
     return () => clearInterval(t);
   }, [loadPresence]);
-
-  const nowMin = minutesNowRecife();
 
   return (
     <div className="space-y-8">
@@ -171,7 +137,7 @@ export default function DashboardHomeClient({
         <div className="min-w-0 flex-1">
           <PageHeader
             title="Página inicial"
-            description="Atalhos, agenda do dia e presença da equipe."
+            description="Atalhos, voos com embarque hoje e presença da equipe."
             actions={<LogoutButton />}
             className="mb-0 border-0 pb-0"
           />
@@ -238,65 +204,45 @@ export default function DashboardHomeClient({
           title={
             <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
               <CalendarDays className="h-4 w-4 text-sky-600" aria-hidden />
-              Agenda do dia
+              Voos — embarque hoje
             </span>
           }
         >
-          {agendaLoading ? (
+          {viagensLoading ? (
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               Carregando…
             </div>
-          ) : agendaError ? (
-            <p className="text-sm text-rose-600">{agendaError}</p>
+          ) : viagensError ? (
+            <p className="text-sm text-rose-600">{viagensError}</p>
           ) : (
             <>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Eventos de hoje
-              </p>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                Fundo verde = turno no horário atual (Recife); a pessoa deve estar online agora.
+                Vendas com localizador e data de embarque hoje (Recife). Detalhes na agenda de viagens.
               </p>
               <ul className="mt-4 space-y-2">
-                {todayEvents.length === 0 ? (
-                  <li className="text-sm text-slate-500">Nenhum evento agendado para hoje.</li>
+                {viagensHoje.length === 0 ? (
+                  <li className="text-sm text-slate-500">Nenhum embarque cadastrado para hoje.</li>
                 ) : (
-                  todayEvents.map((ev) => {
-                    const start = parseHHMMToMin(ev.startHHMM);
-                    const end = parseHHMMToMin(ev.endHHMM);
-                    const inShift =
-                      ev.type === "SHIFT" &&
-                      Number.isFinite(start) &&
-                      Number.isFinite(end) &&
-                      nowMin >= start &&
-                      nowMin <= end;
-                    return (
-                      <li
-                        key={ev.id}
-                        className={
-                          inShift
-                            ? "rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm"
-                            : "rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm"
-                        }
-                      >
-                        <div className="font-medium text-slate-900">
-                          {ev.startHHMM} – {ev.endHHMM}
-                          <span className="ml-2 text-xs font-normal text-slate-500">
-                            {ev.type === "SHIFT" ? "Turno" : "Ausência"}
-                          </span>
-                        </div>
-                        <div className="text-slate-700">{ev.user.name}</div>
-                        {ev.note ? <div className="text-xs text-slate-500">{ev.note}</div> : null}
-                      </li>
-                    );
-                  })
+                  viagensHoje.map((v) => (
+                    <li
+                      key={v.id}
+                      className="rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm"
+                    >
+                      <div className="font-mono font-semibold text-sky-800">{v.locator}</div>
+                      <div className="text-slate-700">
+                        {v.cliente.nome}{" "}
+                        <span className="text-xs text-slate-500">({v.program})</span>
+                      </div>
+                    </li>
+                  ))
                 )}
               </ul>
               <Link
                 href="/dashboard/agenda"
                 className="mt-4 inline-flex text-sm font-medium text-sky-700 underline-offset-4 hover:text-sky-900 hover:underline"
               >
-                Abrir agenda completa
+                Abrir agenda de viagens
               </Link>
             </>
           )}

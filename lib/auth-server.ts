@@ -2,7 +2,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 
-type Role = "admin" | "staff";
+type Role = "admin" | "staff" | "developer";
 
 export type Session = {
   id: string;

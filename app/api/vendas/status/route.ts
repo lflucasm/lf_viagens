@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { isOperationalRole } from "@/lib/session-roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ type Sess = {
   id: string;
   login: string;
   team: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "developer";
 };
 
 function b64urlDecode(input: string) {
@@ -23,7 +24,7 @@ function readSessionCookie(raw?: string): Sess | null {
   try {
     const parsed = JSON.parse(b64urlDecode(raw)) as Partial<Sess>;
     if (!parsed?.id || !parsed?.login || !parsed?.team || !parsed?.role) return null;
-    if (parsed.role !== "admin" && parsed.role !== "staff") return null;
+    if (!isOperationalRole(parsed.role)) return null;
     return parsed as Sess;
   } catch {
     return null;

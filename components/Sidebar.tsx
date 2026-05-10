@@ -1071,8 +1071,7 @@ export default function Sidebar() {
             </SubAccordion>
           </SubAccordion>
 
-          {/* ✅ NOVO: Agenda */}
-          <NavLink href="/dashboard/agenda">Agenda</NavLink>
+          <NavLink href="/dashboard/agenda">Agenda de viagens</NavLink>
 
           <NavLink href="/dashboard/anotacoes">Anotações</NavLink>
 

@@ -4,7 +4,7 @@ import { readSessionCookie } from "@/lib/session";
 export type SessionLike = {
   userId: string;
   login: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "developer";
   team: string;
 };
 

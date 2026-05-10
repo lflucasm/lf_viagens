@@ -69,7 +69,7 @@ export async function GET(req: Request) {
 
     const [users, payouts, settings] = await Promise.all([
       prisma.user.findMany({
-        where: { team },
+        where: { team, role: { in: ["admin", "staff"] } },
         select: { id: true, name: true, login: true, role: true },
         orderBy: { name: "asc" },
       }),

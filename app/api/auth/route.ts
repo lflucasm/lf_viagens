@@ -6,9 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type Role = "admin" | "staff";
+type Role = "admin" | "staff" | "developer";
 
-const TEAM = "@vias_aereas";
+const TEAM_LF = "LF Viagens";
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
@@ -38,15 +38,8 @@ const SEED_USERS: Array<{
     login: "jephesson",
     name: "Jephesson Alex Floriano dos Santos",
     email: "jephesson@gmail.com",
-    role: "admin",
+    role: "developer",
     password: "ufpb2010",
-  },
-  {
-    login: "lucas",
-    name: "Lucas Henrique Floriano de Araújo",
-    email: "luucasaraujo97@gmail.com",
-    role: "admin",
-    password: "1234",
   },
   {
     login: "lucas_fellype",
@@ -54,20 +47,6 @@ const SEED_USERS: Array<{
     email: null,
     role: "admin",
     password: "Lucas@2026!",
-  },
-  {
-    login: "paola",
-    name: "Paola Rampelotto Ziani",
-    email: "paolaziani5@gmail.com",
-    role: "staff",
-    password: "1234",
-  },
-  {
-    login: "eduarda",
-    name: "Eduarda Vargas de Freitas",
-    email: "eduarda.jeph@gmail.com",
-    role: "admin",
-    password: "1234",
   },
 ];
 
@@ -119,7 +98,7 @@ function isApiBody(v: unknown): v is ApiBody {
   return action === "login" || action === "setPassword" || action === "resetSeed" || action === "logout";
 }
 
-// ✅ IMPORTANTE: não sobrescreve senha de usuário que já existe
+/** Só cria usuários iniciais se ainda não existirem (não sobrescreve time/papel/senha em produção). */
 async function seedUsersToDb() {
   for (const u of SEED_USERS) {
     const login = norm(u.login);
@@ -130,26 +109,14 @@ async function seedUsersToDb() {
     });
 
     if (!existing) {
-      // primeira vez: cria com senha do seed
       await prisma.user.create({
         data: {
           login,
           name: u.name,
           email: u.email,
-          team: TEAM,
+          team: TEAM_LF,
           role: u.role,
           passwordHash: sha256(u.password),
-        },
-      });
-    } else {
-      // já existe: atualiza dados, mas NÃO mexe na senha
-      await prisma.user.update({
-        where: { login },
-        data: {
-          name: u.name,
-          email: u.email,
-          team: TEAM,
-          role: u.role,
         },
       });
     }
@@ -202,7 +169,9 @@ export async function POST(req: Request): Promise<NextResponse> {
       setSessionCookie(res, {
         id: dbUser.id,
         login: dbUser.login,
-        role: dbUser.role as Role,
+        role: (dbUser.role === "admin" || dbUser.role === "staff" || dbUser.role === "developer"
+          ? dbUser.role
+          : "staff") as Role,
         team: dbUser.team,
       });
       return res;

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type Role = "admin" | "staff";
+type Role = "admin" | "staff" | "developer";
 
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
@@ -54,7 +54,7 @@ export async function GET() {
     }
 
     const users = await prisma.user.findMany({
-      where: { team: sess.team },
+      where: { team: sess.team, role: { in: ["admin", "staff"] } },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -63,6 +63,7 @@ export async function GET() {
         cpf: true,
         employeeId: true, // ✅
         balcaoSellerCommissionPercent: true,
+        milheiroSellerPayoutPercent: true,
         role: true,
         team: true,
         createdAt: true,
@@ -78,6 +79,7 @@ export async function GET() {
       cpf: u.cpf,
       employeeId: u.employeeId ?? null,
       balcaoSellerCommissionPercent: u.balcaoSellerCommissionPercent ?? null,
+      milheiroSellerPayoutPercent: u.milheiroSellerPayoutPercent ?? null,
       team: u.team,
       role: u.role,
       createdAt: u.createdAt,
@@ -120,9 +122,26 @@ export async function POST(req: NextRequest) {
     const employeeId = slugifyId(employeeIdRaw);
 
     const email = typeof body?.email === "string" ? body.email.trim() : null;
-    const team = sess.team;
+    let team = typeof body?.team === "string" ? body.team.trim() : "";
+    if (!team) team = sess.team;
     const role: Role = body?.role === "admin" ? "admin" : "staff";
     const password = typeof body?.password === "string" ? body.password : "";
+
+    let milheiroSellerPayoutPercent: number | null = null;
+    if ("milheiroSellerPayoutPercent" in body) {
+      const raw = body?.milheiroSellerPayoutPercent;
+      if (raw === null || raw === "") milheiroSellerPayoutPercent = null;
+      else {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) {
+          return NextResponse.json(
+            { ok: false, error: "Percentual sobre milheiro inválido (use 0–100)." },
+            { status: 400, headers: noCacheHeaders() }
+          );
+        }
+        milheiroSellerPayoutPercent = Math.max(0, Math.min(100, Math.round(n)));
+      }
+    }
 
     if (!login || !name || !password) {
       return NextResponse.json(
@@ -164,6 +183,7 @@ export async function POST(req: NextRequest) {
         team,
         role,
         passwordHash: sha256(password),
+        ...(milheiroSellerPayoutPercent !== null ? { milheiroSellerPayoutPercent } : {}),
       },
       select: {
         id: true,

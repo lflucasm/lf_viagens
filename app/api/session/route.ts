@@ -20,7 +20,7 @@ type Sess = {
   id: string;
   login: string;
   team: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "developer";
   // se você salvar isso no cookie, habilita aqui:
   name?: string;
   email?: string | null;

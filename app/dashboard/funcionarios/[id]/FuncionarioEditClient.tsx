@@ -15,6 +15,7 @@ type FuncItem = {
   createdAt: string;
   balcaoSellerCommissionPercent?: number | null;
   balcaoSellerCommissionPercentEffective?: number;
+  milheiroSellerPayoutPercent?: number | null;
   _count?: { cedentes: number };
 };
 
@@ -56,6 +57,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   const [login, setLogin] = useState("");
   const [team, setTeam] = useState("");
   const [balcaoCommissionPercent, setBalcaoCommissionPercent] = useState("");
+  const [milheiroPayoutPercent, setMilheiroPayoutPercent] = useState("");
   // troca de senha
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -79,6 +81,9 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setTeam((u.team || "").trim());
       setBalcaoCommissionPercent(
         u.balcaoSellerCommissionPercent == null ? "" : String(u.balcaoSellerCommissionPercent)
+      );
+      setMilheiroPayoutPercent(
+        u.milheiroSellerPayoutPercent == null ? "" : String(u.milheiroSellerPayoutPercent)
       );
     } catch (e: any) {
       setMsg(e?.message || "Erro");
@@ -113,6 +118,10 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       const pctRaw = balcaoCommissionPercent.trim();
       payload.balcaoSellerCommissionPercent = pctRaw === "" ? null : Number(pctRaw.replace(",", "."));
 
+      const milRaw = milheiroPayoutPercent.trim();
+      payload.milheiroSellerPayoutPercent =
+        milRaw === "" ? null : Number(milRaw.replace(",", "."));
+
       if (!payload.name) throw new Error("Nome obrigatório.");
       if (!payload.employeeId) throw new Error("ID obrigatório (ex: eduarda.freitas).");
       if (!payload.login) throw new Error("Login obrigatório.");
@@ -125,6 +134,15 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
           (payload.balcaoSellerCommissionPercent as number) > 100)
       ) {
         throw new Error("Comissão balcão: informe um percentual entre 0 e 100, ou deixe em branco para o padrão (60%).");
+      }
+
+      if (
+        payload.milheiroSellerPayoutPercent !== null &&
+        (!Number.isFinite(payload.milheiroSellerPayoutPercent as number) ||
+          (payload.milheiroSellerPayoutPercent as number) < 0 ||
+          (payload.milheiroSellerPayoutPercent as number) > 100)
+      ) {
+        throw new Error("Percentual sobre milheiro: use 0 a 100, ou vazio para 100%.");
       }
 
       const res = await fetch(`/api/funcionarios/${item.id}`, {
@@ -267,6 +285,21 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
           <div>
             <label className="block text-sm mb-1">Login</label>
             <input className="w-full rounded-xl border px-3 py-2" value={login} onChange={(e) => setLogin(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="block text-sm mb-1">Pagamento sobre lucro milheiro (% do spread da venda)</label>
+            <input
+              className="w-full rounded-xl border px-3 py-2"
+              inputMode="decimal"
+              placeholder="Vazio = 100%"
+              value={milheiroPayoutPercent}
+              onChange={(e) => setMilheiroPayoutPercent(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Aplicado ao calcular comissões diárias (após imposto e reembolso de taxa como hoje). Ex.: 80 = o
+              funcionário recebe 80% do lucro milheiro do dia.
+            </p>
           </div>
 
           <div>

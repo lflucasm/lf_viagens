@@ -153,6 +153,9 @@ model User {
   /// % do lucro líquido do balcão (após imposto) para comissão do vendedor. Null = usar padrão global (60%).
   balcaoSellerCommissionPercent Int?
 
+  /// % do lucro milheiro (spread) pago ao vendedor nas comissões diárias. Null = 100%.
+  milheiroSellerPayoutPercent Int?
+
   employeeCommissionMode EmployeeCommissionMode @default(STANDARD)
 
   createdAt DateTime @default(now())
