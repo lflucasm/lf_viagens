@@ -205,14 +205,14 @@ export async function GET(req: Request) {
 
     // 1) todos usuários do time
     const users = await prisma.user.findMany({
-      where: { team: session.team, role: { in: ["admin", "staff"] } },
+      where: { role: { in: ["admin", "staff"] } },
       select: { id: true, name: true, login: true },
       orderBy: [{ name: "asc" }],
     });
 
     // 2) lê payouts do dia (com joins)
     const payouts = await prisma.employeePayout.findMany({
-      where: { team: session.team, date },
+      where: { date },
       include: {
         user: { select: { id: true, name: true, login: true } },
         paidBy: { select: { id: true, name: true } },
@@ -224,8 +224,7 @@ export async function GET(req: Request) {
     const { start: balcaoStart, end: balcaoEnd } = dayBoundsRecife(date);
     const balcaoOps = await prisma.balcaoOperacao.findMany({
       where: {
-        team: session.team,
-        createdAt: { gte: balcaoStart, lt: balcaoEnd },
+                createdAt: { gte: balcaoStart, lt: balcaoEnd },
         employeeId: { not: null },
       },
       select: {
@@ -292,8 +291,7 @@ export async function GET(req: Request) {
 
       return {
         id: `missing:${session.team}:${date}:${u.id}`,
-        team: session.team,
-        date,
+                date,
         userId: u.id,
 
         grossProfitCents: 0,
@@ -341,8 +339,7 @@ export async function GET(req: Request) {
     const todayRecife = todayISORecife();
     const pendingRows = await prisma.employeePayout.findMany({
       where: {
-        team: session.team,
-        paidAt: null,
+                paidAt: null,
         date: { lt: todayRecife },
       },
       select: {

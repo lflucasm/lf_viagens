@@ -1,6 +1,7 @@
 // lib/auth-server.ts
 import "server-only";
 import { cookies } from "next/headers";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 type Role = "admin" | "staff" | "developer";
 
@@ -27,13 +28,13 @@ export async function getSessionServer(): Promise<Session | null> {
     const json = b64urlDecode(raw);
     const s = JSON.parse(json);
 
-    if (!s?.id || !s?.login || !s?.role || !s?.team) return null;
+    if (!s?.id || !s?.login || !s?.role) return null;
 
     return {
       id: String(s.id),
       login: String(s.login),
       role: s.role as Role,
-      team: String(s.team),
+      team: CANONICAL_OPERATION_TEAM,
     };
   } catch {
     return null;

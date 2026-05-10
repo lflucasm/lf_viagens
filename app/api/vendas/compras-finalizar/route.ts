@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { isOperationalRole } from "@/lib/session-roles";
 import { triggerEmployeePayoutAutoCompute, todayISORecife } from "@/lib/payouts/autoCompute";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,12 +62,10 @@ export async function PATCH(req: Request) {
           totalCents: true,
           metaMilheiroCents: true,
           finalizedAt: true,
-          cedente: { select: { owner: { select: { team: true } } } },
         },
       });
 
       if (!purchase) throw new Error("Compra não encontrada.");
-      if (purchase.cedente?.owner?.team !== session.team) throw new Error("Sem permissão.");
       if (purchase.status !== "CLOSED") throw new Error("Compra não está LIBERADA.");
       if (purchase.finalizedAt) throw new Error("Compra já foi finalizada.");
 
@@ -114,7 +113,7 @@ export async function PATCH(req: Request) {
     });
 
     const payoutAutoCompute = await triggerEmployeePayoutAutoCompute(req, {
-      team: session.team,
+      team: CANONICAL_OPERATION_TEAM,
       date: todayISORecife(),
       fallbackBasis: "PURCHASE_FINALIZED",
     });

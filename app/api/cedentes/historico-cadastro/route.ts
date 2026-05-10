@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     const baseWhere = {
       status: CedenteStatus.APPROVED,
       // ✅ recomendado: isola por time (se sua app é multi-time)
-      owner: { team: session.team },
+      
     } satisfies Prisma.CedenteWhereInput;
 
     const where: Prisma.CedenteWhereInput =

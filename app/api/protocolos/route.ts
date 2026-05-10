@@ -1,6 +1,7 @@
 // app/api/protocolos/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import { requireSession } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
@@ -45,15 +46,14 @@ export async function GET(req: NextRequest) {
   // ✅ se vier cedenteId, garante que é do time (igual sua versão antiga)
   if (cedenteId) {
     const ced = await prisma.cedente.findFirst({
-      where: { id: cedenteId, owner: { team: session.team } },
+      where: { id: cedenteId },
       select: { id: true },
     });
     if (!ced) return bad("Cedente não encontrado (ou fora do time).", 404);
   }
 
   const where: any = {
-    team: session.team,
-    program,
+        program,
     ...(cedenteId ? { cedenteId } : {}),
   };
 
@@ -111,14 +111,14 @@ export async function POST(req: NextRequest) {
 
   // ✅ garante que o cedente é do time
   const cedente = await prisma.cedente.findFirst({
-    where: { id: cedenteId, owner: { team: session.team } },
+    where: { id: cedenteId },
     select: { id: true },
   });
   if (!cedente) return bad("Cedente não encontrado", 404);
 
   const row = await prisma.protocol.create({
     data: {
-      team: session.team,
+      team: CANONICAL_OPERATION_TEAM,
       program: program as any,
       status: statusRaw as any,
       title,

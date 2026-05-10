@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/require-session";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import {
   BalcaoTaxRule,
   balcaoProfitSemTaxaCents,
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
 
     // soma pontos de TODOS cedentes (do team)
     const agg = await prisma.cedente.aggregate({
-      where: { owner: { team: session.team } },
+      where: {},
       _sum: {
         pontosLatam: true,
         pontosSmiles: true,
@@ -115,7 +116,7 @@ export async function GET(req: Request) {
 
     // histórico (bruto/dividas/liquido + cashCents)
     const snapshots = await prisma.cashSnapshot.findMany({
-      where: { team: session.team },
+      where: {},
       orderBy: [{ createdAt: "desc" }, { date: "desc" }],
       take: 2000,
       select: {
@@ -133,7 +134,7 @@ export async function GET(req: Request) {
     const latest = snapshots[0] ?? null;
 
     const creditCards = await prisma.creditCardBalance.findMany({
-      where: { team: session.team },
+      where: {},
       orderBy: [{ createdAt: "asc" }, { description: "asc" }],
       select: {
         id: true,
@@ -163,7 +164,7 @@ export async function GET(req: Request) {
 
     // ✅ comissões pendentes de cedentes (do team)
     const pendingAgg = await prisma.cedenteCommission.aggregate({
-      where: { status: "PENDING", cedente: { owner: { team: session.team } } },
+      where: { status: "PENDING",  },
       _sum: { amountCents: true },
     });
     const pendingCedenteCommissionsCents = safeInt(pendingAgg._sum.amountCents);
@@ -173,7 +174,7 @@ export async function GET(req: Request) {
     const receivablesAgg = await prisma.receivable.aggregate({
       where: {
         status: "OPEN",
-        sale: { is: { cedente: { owner: { team: session.team } } } },
+        sale: { is: {  } },
       },
       _sum: { balanceCents: true },
     });
@@ -181,7 +182,7 @@ export async function GET(req: Request) {
 
     // ✅ A PAGAR (funcionários) = netPay pendente + comissão pendente do balcão
     const empPendingAgg = await prisma.employeePayout.aggregate({
-      where: { team: session.team, paidAt: null },
+      where: { paidAt: null },
       _sum: { netPayCents: true },
     });
     const employeePayoutsPendingBaseCents = safeInt(empPendingAgg._sum.netPayCents);
@@ -192,13 +193,13 @@ export async function GET(req: Request) {
     });
 
     const paidPayoutRows = await prisma.employeePayout.findMany({
-      where: { team: session.team, paidAt: { not: null } },
+      where: { paidAt: { not: null } },
       select: { userId: true, date: true },
     });
     const paidKeys = new Set(paidPayoutRows.map((r) => `${r.userId}|${r.date}`));
 
     const balcaoOpsWithEmployee = await prisma.balcaoOperacao.findMany({
-      where: { team: session.team, employeeId: { not: null } },
+      where: { employeeId: { not: null } },
       select: {
         employeeId: true,
         createdAt: true,
@@ -253,7 +254,7 @@ export async function GET(req: Request) {
     for (const row of payoutRows) payoutByMonth.set(row.month, safeInt(row.taxCents));
 
     const balcaoOpsTax = await prisma.balcaoOperacao.findMany({
-      where: { team: session.team },
+      where: {},
       select: {
         createdAt: true,
         customerChargeCents: true,
@@ -281,7 +282,7 @@ export async function GET(req: Request) {
     );
 
     const taxPayments = await prisma.taxMonthPayment.findMany({
-      where: { team: session.team, month: { in: allTaxMonths.length ? allTaxMonths : ["__none__"] } },
+      where: { month: { in: allTaxMonths.length ? allTaxMonths : ["__none__"] } },
       select: { month: true, totalTaxCents: true, breakdown: true, paidAt: true },
     });
     const paidByMonth = new Map(taxPayments.map((p) => [p.month, p]));
@@ -404,7 +405,7 @@ export async function POST(req: Request) {
 
     await prisma.cashSnapshot.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         date,
         cashCents,
         totalBruto: totalBrutoCents,

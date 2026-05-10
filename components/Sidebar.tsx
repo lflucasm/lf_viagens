@@ -599,9 +599,6 @@ export default function Sidebar() {
           <div>
             <span className="text-slate-500">Login:</span> {session.login}
           </div>
-          <div>
-            <span className="text-slate-500">Time:</span> {session.team}
-          </div>
           <div className="capitalize">
             <span className="text-slate-500">Perfil:</span> {session.role}
           </div>

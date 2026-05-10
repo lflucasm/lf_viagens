@@ -95,7 +95,7 @@ export async function GET(
     where: {
       id: purchaseId,
       finalizedAt: { not: null },
-      cedente: { owner: { team: session.team } },
+      
     },
     select: {
       id: true,
@@ -202,8 +202,7 @@ export async function GET(
 
   const plan = await prisma.profitShare.findFirst({
     where: {
-      team: session.team,
-      ownerId,
+            ownerId,
       isActive: true,
       effectiveFrom: { lte: finalizedAt },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: finalizedAt } }],

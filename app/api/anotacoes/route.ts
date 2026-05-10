@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { AnotacaoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,12 +68,11 @@ function mapRow(row: {
   };
 }
 
-async function ensureCedenteFromTeam(cedenteId: string, team: string) {
-  const cedente = await prisma.cedente.findFirst({
-    where: { id: cedenteId, owner: { team } },
+async function ensureCedenteExists(cedenteId: string) {
+  return prisma.cedente.findFirst({
+    where: { id: cedenteId },
     select: { id: true },
   });
-  return cedente;
 }
 
 export async function GET() {
@@ -80,7 +80,7 @@ export async function GET() {
     const session = await requireSession();
 
     const rows = await prisma.anotacao.findMany({
-      where: { team: session.team },
+      where: {},
       include: {
         cedente: {
           select: {
@@ -128,12 +128,12 @@ export async function POST(req: NextRequest) {
     if (texto.length < 3) return bad("Anotação deve ter pelo menos 3 caracteres.");
     if (texto.length > 4000) return bad("Anotação muito longa (máximo 4000 caracteres).");
 
-    const cedente = await ensureCedenteFromTeam(cedenteId, session.team);
+    const cedente = await ensureCedenteExists(cedenteId);
     if (!cedente) return bad("Conta (cedente) não encontrada.", 404);
 
     const created = await prisma.anotacao.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         cedenteId,
         texto,
         status,
@@ -180,7 +180,7 @@ export async function PATCH(req: NextRequest) {
     if (!id) return bad("id é obrigatório.");
 
     const current = await prisma.anotacao.findFirst({
-      where: { id, team: session.team },
+      where: { id },
       select: {
         id: true,
         status: true,
@@ -207,7 +207,7 @@ export async function PATCH(req: NextRequest) {
     if (body?.cedenteId != null) {
       const cedenteId = String(body.cedenteId || "").trim();
       if (!cedenteId) return bad("Conta (cedente) é obrigatória.");
-      const cedente = await ensureCedenteFromTeam(cedenteId, session.team);
+      const cedente = await ensureCedenteExists(cedenteId);
       if (!cedente) return bad("Conta (cedente) não encontrada.", 404);
       data.cedenteId = cedenteId;
     }

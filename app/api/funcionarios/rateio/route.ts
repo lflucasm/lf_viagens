@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { isOperationalRole } from "@/lib/session-roles";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,14 +87,14 @@ export async function GET(req: Request) {
   const now = at ?? new Date();
 
   const users = await prisma.user.findMany({
-    where: { team: session.team },
+    where: {},
     orderBy: { name: "asc" },
     select: { id: true, name: true, login: true, role: true },
   });
 
   const cedCounts = await prisma.cedente.groupBy({
     by: ["ownerId"],
-    where: { owner: { team: session.team } },
+    where: {},
     _count: { _all: true },
   });
 
@@ -107,7 +108,7 @@ export async function GET(req: Request) {
    */
   const shares = await prisma.profitShare.findMany({
     where: {
-      team: session.team,
+      team: CANONICAL_OPERATION_TEAM,
       isActive: true,
       effectiveFrom: { lte: now },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
@@ -183,7 +184,7 @@ export async function PUT(req: Request) {
   }
 
   const owner = await prisma.user.findFirst({
-    where: { id: ownerId, team: session.team },
+    where: { id: ownerId },
     select: { id: true },
   });
   if (!owner) {
@@ -217,12 +218,12 @@ export async function PUT(req: Request) {
   // valida payees no mesmo team
   const payeeIds: string[] = items.map((it: RateioItem) => it.payeeId);
   const payees = await prisma.user.findMany({
-    where: { id: { in: payeeIds }, team: session.team },
+    where: { id: { in: payeeIds } },
     select: { id: true },
   });
   if (payees.length !== payeeIds.length) {
     return NextResponse.json(
-      { ok: false, error: "Um ou mais destinatários não pertencem ao team" },
+      { ok: false, error: "Um ou mais destinatários não foram encontrados." },
       { status: 400 }
     );
   }
@@ -235,14 +236,14 @@ export async function PUT(req: Request) {
   await prisma.$transaction(async (tx) => {
     // acha o "próximo" já agendado (pra setar effectiveTo do novo)
     const next = await tx.profitShare.findFirst({
-      where: { team: session.team, ownerId, effectiveFrom: { gt: effectiveFrom } },
+      where: { team: CANONICAL_OPERATION_TEAM, ownerId, effectiveFrom: { gt: effectiveFrom } },
       orderBy: { effectiveFrom: "asc" },
       select: { id: true, effectiveFrom: true },
     });
 
     // acha o "anterior" (pra fechar com effectiveTo = effectiveFrom do novo)
     const prev = await tx.profitShare.findFirst({
-      where: { team: session.team, ownerId, effectiveFrom: { lt: effectiveFrom } },
+      where: { team: CANONICAL_OPERATION_TEAM, ownerId, effectiveFrom: { lt: effectiveFrom } },
       orderBy: { effectiveFrom: "desc" },
       select: { id: true, effectiveFrom: true, effectiveTo: true },
     });
@@ -251,13 +252,13 @@ export async function PUT(req: Request) {
     await tx.profitShare.upsert({
       where: {
         team_ownerId_effectiveFrom: {
-          team: session.team,
+          team: CANONICAL_OPERATION_TEAM,
           ownerId,
           effectiveFrom,
         },
       },
       create: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         ownerId,
         isActive: true,
         effectiveFrom,

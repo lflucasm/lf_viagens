@@ -413,9 +413,9 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
     return Math.round((itemPreview.amountCents * 1000) / itemPreview.pointsFinal);
   }, [itemPreview]);
 
-  async function criarRascunho() {
+  async function iniciarCompraPontos() {
     if (!cedenteSel || !program) {
-      setError("Selecione cedente e programa.");
+      setError("Selecione o cedente, o programa e o tipo (compra ou clube).");
       return;
     }
     setError(null);
@@ -542,8 +542,8 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         <div>
           <h1 className="text-xl font-semibold">Efetuar compra</h1>
           <p className="text-sm text-gray-600">
-            Uma compra por <b>programa</b> e <b>cedente</b>: pontos adquiridos ou assinatura de
-            clube. Sem taxas extras — o milheiro vem do custo ÷ pontos.
+            <b>1)</b> Cedente · <b>2)</b> Programa em que os pontos entram · <b>3)</b> Compra de pontos
+            ou clube. Depois informe valores e libere o saldo. O milheiro vem do custo ÷ pontos.
           </p>
           {draft && (
             <div className="mt-2 text-xs text-gray-500">
@@ -551,7 +551,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
                 <span className="text-emerald-700 font-medium">Liberada</span>
               ) : (
                 <>
-                  Rascunho · atualizado automaticamente · programa{" "}
+                  Compra em edição · programa{" "}
                   <b>{draft.ciaProgram ? PROGRAM_LABEL[draft.ciaProgram] : "—"}</b>
                 </>
               )}
@@ -595,7 +595,9 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
 
       {/* Cedente */}
       <div className="rounded-xl border p-4 space-y-3">
-        <h2 className="font-medium">Cedente</h2>
+        <h2 className="font-medium">
+          <span className="text-gray-400 font-normal text-sm mr-2">1.</span>Cedente
+        </h2>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -636,29 +638,45 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         )}
       </div>
 
-      {/* Programa + tipo */}
-      <div className="rounded-xl border p-4 space-y-4">
-        <h2 className="font-medium">Programa e tipo</h2>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="block text-sm">
-            <span className="text-gray-600">Programa (destino dos pontos)</span>
-            <select
-              value={program}
-              onChange={(e) => setProgram(e.target.value as LoyaltyProgram | "")}
-              disabled={!!draft?.id || isClosed}
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-            >
-              <option value="">Selecione…</option>
-              {(Object.keys(PROGRAM_LABEL) as LoyaltyProgram[]).map((p) => (
-                <option key={p} value={p}>
-                  {PROGRAM_LABEL[p]}
-                </option>
-              ))}
-            </select>
-          </label>
+      {/* Programa */}
+      <div className="rounded-xl border p-4 space-y-3">
+        <h2 className="font-medium">
+          <span className="text-gray-400 font-normal text-sm mr-2">2.</span>Programa
+        </h2>
+        <p className="text-xs text-gray-500">
+          Escolha em qual programa você vai <b>adicionar pontos</b> para este cedente.
+        </p>
+        <label className="block text-sm">
+          <span className="text-gray-600">Programa</span>
+          <select
+            value={program}
+            onChange={(e) => setProgram(e.target.value as LoyaltyProgram | "")}
+            disabled={!cedenteSel || !!draft?.id || isClosed}
+            className="mt-1 w-full rounded-md border px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+          >
+            <option value="">
+              {cedenteSel ? "Selecione o programa…" : "Primeiro selecione um cedente"}
+            </option>
+            {(Object.keys(PROGRAM_LABEL) as LoyaltyProgram[]).map((p) => (
+              <option key={p} value={p}>
+                {PROGRAM_LABEL[p]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Tipo: compra vs clube */}
+      {cedenteSel && program && (
+        <div className="rounded-xl border p-4 space-y-4">
+          <h2 className="font-medium">
+            <span className="text-gray-400 font-normal text-sm mr-2">3.</span>Tipo de lançamento
+          </h2>
+          <p className="text-xs text-gray-500">
+            Compra avulsa de pontos ou assinatura de clube no programa escolhido.
+          </p>
           <div className="text-sm">
-            <span className="text-gray-600">Tipo</span>
-            <div className="mt-2 flex gap-4">
+            <div className="flex flex-wrap gap-6">
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -681,19 +699,25 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
               </label>
             </div>
           </div>
-        </div>
 
-        {!draft?.id && cedenteSel && program && (
-          <button
-            type="button"
-            onClick={() => void criarRascunho()}
-            disabled={saving}
-            className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            Criar rascunho de compra
-          </button>
-        )}
-      </div>
+          {!draft?.id && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => void iniciarCompraPontos()}
+                disabled={saving}
+                className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {tipo === "CLUBE" ? "Registrar clube" : "Adicionar pontos"}
+              </button>
+              <p className="text-xs text-gray-500">
+                Abre a etapa de valores (pontos ou pacote de clube). Depois use <b>Salvar agora</b> e{" "}
+                <b>Liberar</b> para aplicar o saldo no cedente.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {draft?.id && !isClosed && (
         <>
@@ -891,8 +915,14 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
       )}
 
       <p className="text-xs text-gray-500">
-        {saving ? "Salvando…" : ""}{" "}
-        Use <b>Salvar agora</b> antes de liberar. Transferências entre programas:{" "}
+        {saving ? "Salvando…" : ""}
+        {draft?.id && !isClosed ? (
+          <>
+            {" "}
+            Use <b>Salvar agora</b> antes de liberar.{" "}
+          </>
+        ) : null}
+        Transferências entre programas:{" "}
         <a href="/dashboard/compras/transferir" className="underline text-blue-700">
           Transferir pontos
         </a>

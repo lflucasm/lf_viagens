@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/require-session";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
 
     await prisma.cashSnapshot.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         date: capturedAt,
         cashCents,
         totalBruto: totalBrutoCents,

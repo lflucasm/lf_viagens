@@ -20,7 +20,7 @@ export async function GET() {
     }
 
     const affiliate = await prisma.affiliate.findFirst({
-      where: { id: session.id, team: session.team, isActive: true },
+      where: { id: session.id, isActive: true },
       select: {
         id: true,
         team: true,

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,11 +54,7 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "Sem permissão." }, { status: 403, headers: noCacheHeaders() });
     }
 
-    /**
-     * Ambiente single-tenant: admin vê todos admin/staff (vários valores de `team`
-     * legados impediam ver/excluir quem ficou em @vias_aereas quando o admin já
-     * estava em LF Viagens).
-     */
+    /** Single-tenant: todos os admin/staff da operação. */
     const users = await prisma.user.findMany({
       where: { role: { in: ["admin", "staff"] } },
       orderBy: { createdAt: "desc" },
@@ -85,7 +82,7 @@ export async function GET() {
       employeeId: u.employeeId ?? null,
       balcaoSellerCommissionPercent: u.balcaoSellerCommissionPercent ?? null,
       milheiroSellerPayoutPercent: u.milheiroSellerPayoutPercent ?? null,
-      team: u.team,
+      team: CANONICAL_OPERATION_TEAM,
       role: u.role,
       createdAt: u.createdAt,
       inviteCode: u.employeeInvite?.code ?? null,
@@ -127,8 +124,6 @@ export async function POST(req: NextRequest) {
     const employeeId = slugifyId(employeeIdRaw);
 
     const email = typeof body?.email === "string" ? body.email.trim() : null;
-    let team = typeof body?.team === "string" ? body.team.trim() : "";
-    if (!team) team = sess.team;
     const role: Role = body?.role === "admin" ? "admin" : "staff";
     const password = typeof body?.password === "string" ? body.password : "";
 
@@ -185,7 +180,7 @@ export async function POST(req: NextRequest) {
         cpf: cpf ? cpf : null,
         employeeId, // ✅
         email,
-        team,
+        team: CANONICAL_OPERATION_TEAM,
         role,
         passwordHash: sha256(password),
         ...(milheiroSellerPayoutPercent !== null ? { milheiroSellerPayoutPercent } : {}),

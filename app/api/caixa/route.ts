@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/require-session";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     const date = parseCapturedAt(body?.capturedAt);
 
     const created = await prisma.cashSnapshot.create({
-      data: { team: session.team, date, totalBruto, totalDividas, totalLiquido },
+      data: { team: CANONICAL_OPERATION_TEAM, date, totalBruto, totalDividas, totalLiquido },
       select: { id: true, date: true, totalBruto: true, totalDividas: true, totalLiquido: true },
     });
 

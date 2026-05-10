@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import { LoyaltyProgram } from "@prisma/client";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,8 +63,7 @@ export async function GET(req: NextRequest) {
     const [items, recentDateRows] = await Promise.all([
       prisma.latamPromoListItem.findMany({
         where: {
-          team: session.team,
-          listDate,
+                    listDate,
         },
         orderBy: [{ status: "asc" }, { createdAt: "asc" }],
         select: {
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.latamPromoListItem.findMany({
-        where: { team: session.team },
+        where: {},
         distinct: ["listDate"],
         orderBy: [{ listDate: "desc" }],
         take: 14,
@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
     const cedente = await prisma.cedente.findFirst({
       where: {
         id: cedenteId,
-        owner: { team: session.team },
+        
       },
       select: { id: true, nomeCompleto: true },
     });
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
     const existing = await prisma.latamPromoListItem.findUnique({
       where: {
         team_listDate_cedenteId: {
-          team: session.team,
+          team: CANONICAL_OPERATION_TEAM,
           listDate,
           cedenteId,
         },
@@ -238,7 +238,7 @@ export async function POST(req: NextRequest) {
 
     const item = await prisma.latamPromoListItem.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         listDate,
         cedenteId,
         status: "PENDING",
@@ -273,8 +273,7 @@ export async function PATCH(req: NextRequest) {
     const existing = await prisma.latamPromoListItem.findFirst({
       where: {
         id: itemId,
-        team: session.team,
-      },
+              },
       select: { id: true },
     });
 

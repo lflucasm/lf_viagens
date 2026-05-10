@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionServer } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -163,8 +164,7 @@ export async function GET(req: NextRequest) {
 
   // NÃO filtra status no banco (pra automação on-demand poder atualizar)
   const where: any = {
-    team: session.team,
-    ...(cedenteId ? { cedenteId } : {}),
+        ...(cedenteId ? { cedenteId } : {}),
     ...(program ? { program } : {}),
     ...(q
       ? {
@@ -201,8 +201,7 @@ export async function GET(req: NextRequest) {
       const grouped = await prisma.clubSubscription.groupBy({
         by: ["cedenteId"],
         where: {
-          team: session.team,
-          program: "SMILES" as any,
+                    program: "SMILES" as any,
           cedenteId: { in: smilesCedenteIds },
         },
         _max: { subscribedAt: true },
@@ -348,16 +347,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const ced = await prisma.cedente.findFirst({
-      where: { id: cedenteId, owner: { team: session.team } },
+      where: { id: cedenteId },
       select: { id: true },
     });
-    if (!ced) return bad("Cedente não encontrado (ou não pertence ao seu time)", 404);
+    if (!ced) return bad("Cedente não encontrado.", 404);
 
     // ✅ SMILES: base = última assinatura SMILES (MAX), incluindo o registro novo
     let promoBaseAt: Date | null = null;
     if (program === "SMILES") {
       const agg = await prisma.clubSubscription.aggregate({
-        where: { team: session.team, cedenteId, program: "SMILES" as any },
+        where: { cedenteId, program: "SMILES" as any },
         _max: { subscribedAt: true },
       });
       const last = agg._max.subscribedAt ? startUTC(agg._max.subscribedAt) : null;
@@ -374,7 +373,7 @@ export async function POST(req: NextRequest) {
 
     const created = await prisma.clubSubscription.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         cedenteId,
         program: program as any,
         tierK,

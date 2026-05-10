@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
 
     const whereCedente: any = {
       status: "APPROVED",
-      owner: { team: session.team },
+      
       AND: [],
     };
 
@@ -264,8 +264,7 @@ export async function GET(req: NextRequest) {
     const promoDate = isoDateNowSP();
     const promoTodayItems = await prisma.latamPromoListItem.findMany({
       where: {
-        team: session.team,
-        listDate: promoDate,
+                listDate: promoDate,
         cedenteId: { in: ids },
       },
       select: { cedenteId: true },
@@ -274,8 +273,7 @@ export async function GET(req: NextRequest) {
 
     const latamClubs = await prisma.clubSubscription.findMany({
       where: {
-        team: session.team,
-        program: "LATAM",
+                program: "LATAM",
         cedenteId: { in: ids },
       },
       select: {

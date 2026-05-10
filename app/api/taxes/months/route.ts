@@ -153,7 +153,7 @@ export async function GET(req: Request) {
     }
 
     const balcaoRows = await prisma.balcaoOperacao.findMany({
-      where: { team: session.team },
+      where: {},
       select: {
         createdAt: true,
         customerChargeCents: true,
@@ -182,7 +182,7 @@ export async function GET(req: Request) {
       .slice(0, limit);
 
     const payments = await prisma.taxMonthPayment.findMany({
-      where: { team: session.team, month: { in: allMonths.length ? allMonths : ["__none__"] } },
+      where: { month: { in: allMonths.length ? allMonths : ["__none__"] } },
       select: {
         month: true,
         totalTaxCents: true,

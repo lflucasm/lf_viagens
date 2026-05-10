@@ -67,7 +67,7 @@ export async function GET(req: Request) {
 
   const whereBase: any = {
     status: "CLOSED", // compra LIBERADA
-    cedente: { owner: { team: session.team } },
+    
   };
 
   if (q) {

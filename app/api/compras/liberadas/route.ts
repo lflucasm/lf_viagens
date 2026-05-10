@@ -128,7 +128,7 @@ export async function GET(req: Request) {
         ...(program ? { ciaAerea: program } : {}),
 
         // ✅ segurança: o cedente tem que ser do mesmo time do usuário logado
-        cedente: { owner: { team: session.team } },
+        
       },
       orderBy: [
         { liberadoEm: "desc" },

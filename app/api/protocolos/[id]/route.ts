@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (!protocolId) return bad("id inválido");
 
   const row = await prisma.protocol.findFirst({
-    where: { id: protocolId, team: session.team },
+    where: { id: protocolId },
     select: {
       id: true,
       program: true,
@@ -76,7 +76,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
 
   const exists = await prisma.protocol.findFirst({
-    where: { id: protocolId, team: session.team },
+    where: { id: protocolId },
     select: { id: true },
   });
   if (!exists) return bad("Protocolo não encontrado", 404);

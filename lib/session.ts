@@ -1,4 +1,6 @@
 // lib/session.ts
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
+
 export type Sess = {
   id: string;
   login: string;
@@ -16,9 +18,14 @@ export function readSessionCookie(raw?: string | null): Sess | null {
   if (!raw) return null;
   try {
     const json = b64urlDecode(raw);
-    const data = JSON.parse(json) as Sess;
-    if (!data?.id || !data?.login || !data?.team || !data?.role) return null;
-    return data;
+    const data = JSON.parse(json) as Partial<Sess>;
+    if (!data?.id || !data?.login || !data?.role) return null;
+    return {
+      id: String(data.id),
+      login: String(data.login),
+      role: data.role as Sess["role"],
+      team: String(data.team || CANONICAL_OPERATION_TEAM),
+    };
   } catch {
     return null;
   }

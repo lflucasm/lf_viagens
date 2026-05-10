@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import { resolveBalcaoSellerCommissionPercent } from "@/lib/balcao-commission";
 import { reassignEmployeeScopedData } from "@/lib/reassign-staff-exit";
 
@@ -51,15 +52,15 @@ async function requireAdminSameTeamHeaders() {
   return { sess } as const;
 }
 
-/** Não remover o último admin do time (exclusão ou mudança de time). */
-async function assertNotLastAdminOfTeam(team: string, userId: string) {
+/** Não remover o único admin da operação (single-tenant). */
+async function assertNotLastAdminOfOrg(userId: string) {
   const u = await prisma.user.findFirst({
-    where: { id: userId, team },
+    where: { id: userId },
     select: { role: true },
   });
   if (!u || u.role !== "admin") return;
   const others = await prisma.user.count({
-    where: { team, role: "admin", NOT: { id: userId } },
+    where: { role: "admin", NOT: { id: userId } },
   });
   if (others < 1) {
     const err = new Error("LAST_ADMIN");
@@ -108,7 +109,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
           u.balcaoSellerCommissionPercent
         ),
         milheiroSellerPayoutPercent: u.milheiroSellerPayoutPercent ?? null,
-        team: u.team,
+        team: CANONICAL_OPERATION_TEAM,
         role: u.role,
         createdAt: u.createdAt,
         inviteCode: u.employeeInvite?.code ?? null,
@@ -139,15 +140,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const cpf = typeof body?.cpf === "string" ? onlyDigits(body.cpf) : "";
   const employeeIdRaw = typeof body?.employeeId === "string" ? body.employeeId.trim() : "";
   const employeeId = slugifyId(employeeIdRaw);
-
-  let team: string | undefined = undefined;
-  if ("team" in body && body?.team != null) {
-    const t = typeof body.team === "string" ? body.team.trim() : "";
-    if (!t) {
-      return NextResponse.json({ ok: false, error: "Time inválido." }, { status: 400, headers: noCacheHeaders() });
-    }
-    team = t;
-  }
 
   let roleUpdate: string | undefined = undefined;
   if ("role" in body && body?.role != null) {
@@ -197,11 +189,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   try {
-    if (team !== undefined && team !== existing.team) {
-      await assertNotLastAdminOfTeam(existing.team, id);
-    }
     if (roleUpdate !== undefined && existing.role === "admin" && roleUpdate !== "admin") {
-      await assertNotLastAdminOfTeam(existing.team, id);
+      await assertNotLastAdminOfOrg(id);
     }
 
     const updated = await prisma.user.update({
@@ -211,7 +200,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         login,
         cpf: cpf ? cpf : null,
         employeeId,
-        ...(team !== undefined ? { team } : {}),
+        team: CANONICAL_OPERATION_TEAM,
         ...(roleUpdate !== undefined ? { role: roleUpdate } : {}),
         ...(balcaoSellerCommissionPercent !== undefined
           ? { balcaoSellerCommissionPercent }
@@ -247,7 +236,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
             updated.balcaoSellerCommissionPercent
           ),
           milheiroSellerPayoutPercent: updated.milheiroSellerPayoutPercent ?? null,
-          team: updated.team,
+          team: CANONICAL_OPERATION_TEAM,
           role: updated.role,
           createdAt: updated.createdAt,
           inviteCode: updated.employeeInvite?.code ?? null,
@@ -261,7 +250,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json(
         {
           ok: false,
-          error: "Não é possível alterar o time: este é o único administrador do time atual.",
+          error: "Não é possível alterar o papel: este é o único administrador da operação.",
         },
         { status: 409, headers: noCacheHeaders() }
       );
@@ -293,7 +282,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
 
   try {
     await reassignEmployeeScopedData(prisma, { fromUserId: id, toUserId: gate.sess.id });
-    await assertNotLastAdminOfTeam(target.team, id);
+    await assertNotLastAdminOfOrg(id);
 
     await prisma.user.delete({ where: { id } });
 
@@ -304,7 +293,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
       return NextResponse.json(
         {
           ok: false,
-          error: "Não é possível excluir o único administrador do time.",
+          error: "Não é possível excluir o único administrador da operação.",
         },
         { status: 409, headers: noCacheHeaders() }
       );

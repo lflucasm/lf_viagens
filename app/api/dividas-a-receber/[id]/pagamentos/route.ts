@@ -49,7 +49,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
 
   const row = await prisma.dividaAReceber.findFirst({
-    where: { id: String(id || ""), team: session.team },
+    where: { id: String(id || "") },
     include: { payments: { orderBy: { receivedAt: "desc" } } },
   });
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const body = await req.json().catch(() => ({}));
 
   const parent = await prisma.dividaAReceber.findFirst({
-    where: { id: String(id || ""), team: session.team },
+    where: { id: String(id || "") },
     select: { id: true, totalCents: true, status: true },
   });
 

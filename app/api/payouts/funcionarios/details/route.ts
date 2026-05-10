@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import { choosePvNoFee, milheiroLucroVendaCents } from "@/lib/payouts/employeePayouts";
 import {
   balcaoProfitSemTaxaCents,
@@ -242,8 +243,7 @@ export async function GET(req: NextRequest) {
   // ✅ carrega payouts do banco (fonte de verdade)
   const payouts = await prisma.employeePayout.findMany({
     where: {
-      team: session.team,
-      userId,
+            userId,
       ...(scopeMonth ? { date: { startsWith: monthKey } } : { date }),
     },
     include: {
@@ -258,7 +258,7 @@ export async function GET(req: NextRequest) {
 
   const balcaoCommissionCents =
     !scopeMonth && userId
-      ? await balcaoCommissionDayCents({ team: session.team, userId, date })
+      ? await balcaoCommissionDayCents({ team: CANONICAL_OPERATION_TEAM, userId, date })
       : 0;
 
   const base = {
@@ -332,7 +332,7 @@ export async function GET(req: NextRequest) {
   }
 
   const membersRaw = await prisma.user.findMany({
-    where: { team: session.team, role: { in: ["admin", "staff"] } },
+    where: { role: { in: ["admin", "staff"] } },
     select: { id: true, name: true, login: true },
   });
   const members: TeamMemberLite[] = membersRaw.map((u) => ({
@@ -346,7 +346,7 @@ export async function GET(req: NextRequest) {
     where: {
       date: { gte: start, lt: end },
       paymentStatus: { not: "CANCELED" },
-      cedente: { owner: { team: session.team } },
+      
     },
     select: {
       id: true,

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return bad("Não autenticado", 401);
 
   const okCed = await prisma.cedente.findFirst({
-    where: { id: cedenteId, owner: { team: session.team } },
+    where: { id: cedenteId },
     select: { id: true },
   });
   if (!okCed) return bad("Cedente não encontrado.", 404);
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return bad("Não autenticado", 401);
 
   const cedente = await prisma.cedente.findFirst({
-    where: { id: cedenteId, owner: { team: session.team } },
+    where: { id: cedenteId },
     select: { id: true, status: true },
   });
   if (!cedente) return bad("Cedente não encontrado.", 404);

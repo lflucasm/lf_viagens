@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest) {
 
   // ✅ lista todos os cedentes do time
   const rows = await prisma.cedente.findMany({
-    where: { owner: { team: session.team } },
+    where: {},
     orderBy: [{ nomeCompleto: "asc" }],
     select: {
       id: true,

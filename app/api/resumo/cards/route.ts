@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/require-session";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
     const session = await requireSession(req);
 
     const rows = await prisma.creditCardBalance.findMany({
-      where: { team: session.team },
+      where: {},
       orderBy: [{ createdAt: "asc" }, { description: "asc" }],
       select: {
         id: true,
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
 
     const row = await prisma.creditCardBalance.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         description,
         amountCents,
       },
@@ -89,8 +90,7 @@ export async function DELETE(req: Request) {
     const result = await prisma.creditCardBalance.deleteMany({
       where: {
         id,
-        team: session.team,
-      },
+              },
     });
 
     if (!result.count) {

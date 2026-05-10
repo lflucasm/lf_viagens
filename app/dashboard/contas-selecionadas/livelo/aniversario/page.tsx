@@ -51,7 +51,6 @@ export default async function Page() {
     where: {
       status: "APPROVED",
       dataNascimento: { not: null },
-      owner: { team: session.team },
     },
     select: {
       id: true,

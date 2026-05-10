@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/require-session";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 const TAX_TZ = "America/Recife";
 const DEFAULT_TAX_PERCENT = 8;
@@ -167,7 +168,7 @@ export async function POST(req: Request) {
     if (month >= cur) return bad(400, "Só é permitido pagar mês fechado (anterior ao mês atual).");
 
     const existing = await prisma.taxMonthPayment.findUnique({
-      where: { team_month: { team: session.team, month } },
+      where: { team_month: { team: CANONICAL_OPERATION_TEAM, month } },
       select: { paidAt: true },
     });
 
@@ -175,12 +176,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    const computed = await computeMonth(session.team, month);
+    const computed = await computeMonth(CANONICAL_OPERATION_TEAM, month);
 
     await prisma.taxMonthPayment.upsert({
-      where: { team_month: { team: session.team, month } },
+      where: { team_month: { team: CANONICAL_OPERATION_TEAM, month } },
       create: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         month,
         totalTaxCents: computed.totalTaxCents,
         breakdown: {

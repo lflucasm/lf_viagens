@@ -49,7 +49,7 @@ export async function POST(_req: NextRequest, context: { params: Promise<{ id: s
   }
 
   const user = await prisma.user.findFirst({
-    where: { id, team: sess.team },
+    where: { id },
     select: { id: true, name: true },
   });
 

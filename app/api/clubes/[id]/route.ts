@@ -183,7 +183,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   try {
     const existing = await prisma.clubSubscription.findFirst({
-      where: { id, team: session.team },
+      where: { id },
       select: {
         id: true,
         team: true,
@@ -211,7 +211,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (!cedenteId) return bad("cedenteId inválido");
 
       const ced = await prisma.cedente.findFirst({
-        where: { id: cedenteId, owner: { team: session.team } },
+        where: { id: cedenteId },
         select: { id: true },
       });
       if (!ced) return bad("Cedente inválido (fora do seu time)", 400);
@@ -306,8 +306,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (finalProgram === "SMILES") {
       const agg = await prisma.clubSubscription.aggregate({
         where: {
-          team: session.team,
-          cedenteId: finalCedenteId,
+                    cedenteId: finalCedenteId,
           program: "SMILES" as any,
           NOT: { id }, // pega “outros” e compara com este
         },
@@ -371,7 +370,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     const hard = searchParams.get("hard") === "1";
 
     const existing = await prisma.clubSubscription.findFirst({
-      where: { id, team: session.team },
+      where: { id },
       select: { id: true },
     });
     if (!existing) return bad("Clube não encontrado", 404);

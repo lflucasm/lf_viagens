@@ -45,7 +45,7 @@ export async function PATCH(
 
   try {
     const ced = await prisma.cedente.findFirst({
-      where: { id, owner: { team: session.team } },
+      where: { id },
       select: { id: true },
     });
     if (!ced) return bad("Cedente não encontrado", 404);

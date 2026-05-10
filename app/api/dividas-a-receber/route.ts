@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,8 +64,8 @@ export function computeStatus(
   return "PARTIAL";
 }
 
-function buildWhere(sessionTeam: string, statusRaw: string, q: string) {
-  const where: any = { team: sessionTeam };
+function buildWhere(statusRaw: string, q: string) {
+  const where: Record<string, unknown> = {};
 
   const status = (statusRaw || "").toUpperCase();
   if (status && STATUS.includes(status as ReceberStatus)) {
@@ -99,7 +100,7 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get("q") || "").trim();
   const take = Math.min(Math.max(safeInt(url.searchParams.get("take"), 100), 1), 300);
 
-  const where = buildWhere(session.team, status, q);
+  const where = buildWhere(status, q);
 
   // ✅ lista (paginada)
   const rows = await prisma.dividaAReceber.findMany({
@@ -181,9 +182,8 @@ export async function POST(req: Request) {
 
   const created = await prisma.dividaAReceber.create({
     data: {
+      team: CANONICAL_OPERATION_TEAM,
       ownerId: session.id,
-      team: session.team,
-
       debtorName,
       debtorDoc: normalizeText(body.debtorDoc, 40) || null,
       debtorPhone: normalizeText(body.debtorPhone, 40) || null,

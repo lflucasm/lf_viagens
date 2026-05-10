@@ -101,7 +101,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     const { id: purchaseId } = await params;
 
     const compra = await prisma.purchase.findFirst({
-      where: { id: purchaseId, cedente: { owner: { team: session.team } } },
+      where: { id: purchaseId,  },
       include: { items: true },
     });
 
@@ -155,7 +155,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const deleteIds = Array.isArray(body?.deleteIds) ? body.deleteIds : [];
 
     const compra = await prisma.purchase.findFirst({
-      where: { id: purchaseId, cedente: { owner: { team: session.team } } },
+      where: { id: purchaseId,  },
       include: { items: true, cedente: true },
     });
 

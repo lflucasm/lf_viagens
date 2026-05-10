@@ -169,7 +169,7 @@ export async function GET(req: NextRequest) {
   try {
     // 1) cedentes do time (sempre todos; filtro q é aplicado depois)
     const cedentes = await prisma.cedente.findMany({
-      where: { owner: { team: session.team } },
+      where: {},
       select: { id: true, identificador: true, nomeCompleto: true, cpf: true },
       orderBy: [{ nomeCompleto: "asc" }, { identificador: "asc" }],
     });
@@ -179,8 +179,7 @@ export async function GET(req: NextRequest) {
     // 2) clubes do time (pegamos tudo e escolhemos o mais recente por programa)
     const clubs = await prisma.clubSubscription.findMany({
       where: {
-        team: session.team,
-        ...(cedenteIds.length ? { cedenteId: { in: cedenteIds } } : {}),
+                ...(cedenteIds.length ? { cedenteId: { in: cedenteIds } } : {}),
       },
       select: {
         id: true,

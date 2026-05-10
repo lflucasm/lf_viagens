@@ -1,5 +1,6 @@
 // lib/require-session.ts
 import { readSessionCookie } from "@/lib/session";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export type SessionLike = {
   userId: string;
@@ -32,5 +33,5 @@ export function requireSession(req: Request): SessionLike {
     throw new Error("Não autenticado/sem permissão (cookie tm.session não chegou)");
   }
 
-  return { userId: s.id, login: s.login, role: s.role, team: s.team };
+  return { userId: s.id, login: s.login, role: s.role, team: CANONICAL_OPERATION_TEAM };
 }

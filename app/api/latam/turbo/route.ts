@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionServer } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import { LoyaltyProgram } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -188,7 +189,7 @@ export async function GET(req: NextRequest) {
   // 1) cedentes do time
   const cedentes = await prisma.cedente.findMany({
     where: {
-      owner: { team: session.team },
+      
       ...(q
         ? {
             OR: [
@@ -208,8 +209,7 @@ export async function GET(req: NextRequest) {
   // 2) pegar LATAM club mais recente por cedente (e aplicar downgrade on-demand)
   const clubs = await prisma.clubSubscription.findMany({
     where: {
-      team: session.team,
-      program: "LATAM",
+            program: "LATAM",
       ...(cedenteIds.length ? { cedenteId: { in: cedenteIds } } : {}),
     },
     select: {
@@ -291,7 +291,7 @@ export async function GET(req: NextRequest) {
 
   // 3) marcações Turbo do mês
   const monthMarks = await prisma.latamTurboMonth.findMany({
-    where: { team: session.team, monthKey },
+    where: { monthKey },
     select: { id: true, cedenteId: true, status: true, points: true, notes: true, updatedAt: true },
   });
 
@@ -300,7 +300,7 @@ export async function GET(req: NextRequest) {
 
   // 4) dados de CPFs (LatamTurboAccount)
   const accounts = await prisma.latamTurboAccount.findMany({
-    where: { team: session.team, ...(cedenteIds.length ? { cedenteId: { in: cedenteIds } } : {}) },
+    where: { ...(cedenteIds.length ? { cedenteId: { in: cedenteIds } } : {}) },
     select: { cedenteId: true, cpfLimit: true, cpfUsed: true },
   });
 
@@ -486,17 +486,21 @@ export async function POST(req: NextRequest) {
 
   // garante que cedente é do time
   const ced = await prisma.cedente.findFirst({
-    where: { id: cedenteId, owner: { team: session.team } },
+    where: { id: cedenteId },
     select: { id: true },
   });
   if (!ced) return bad("Cedente não encontrado (ou fora do seu time)", 404);
 
   const item = await prisma.latamTurboMonth.upsert({
     where: {
-      team_monthKey_cedenteId: { team: session.team, monthKey, cedenteId },
+      team_monthKey_cedenteId: {
+        team: CANONICAL_OPERATION_TEAM,
+        monthKey,
+        cedenteId,
+      },
     },
     create: {
-      team: session.team,
+      team: CANONICAL_OPERATION_TEAM,
       monthKey,
       cedenteId,
       status,

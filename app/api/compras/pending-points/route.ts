@@ -16,7 +16,7 @@ export async function GET() {
       prisma.cedente.findMany({
         where: {
           status: "APPROVED",
-          owner: { team: session.team },
+          
           OR: [{ pontosLatam: { gt: 0 } }, { senhaLatamPass: { not: null } }],
         },
         select: { id: true },
@@ -24,7 +24,7 @@ export async function GET() {
       prisma.cedente.findMany({
         where: {
           status: "APPROVED",
-          owner: { team: session.team },
+          
           OR: [{ pontosSmiles: { gt: 0 } }, { senhaSmiles: { not: null } }],
         },
         select: { id: true },

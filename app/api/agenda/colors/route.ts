@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,8 +35,8 @@ export async function PATCH(req: NextRequest) {
   if (!isHex(colorHex)) return bad("colorHex inválido. Use #RRGGBB.");
 
   const up = await prisma.agendaMemberColor.upsert({
-    where: { team_userId: { team: session.team, userId } },
-    create: { team: session.team, userId, colorHex },
+    where: { team_userId: { team: CANONICAL_OPERATION_TEAM, userId } },
+    create: { team: CANONICAL_OPERATION_TEAM, userId, colorHex },
     update: { colorHex },
   });
 

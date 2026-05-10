@@ -55,7 +55,7 @@ export async function PATCH(
       const p = await tx.purchase.findFirst({
         where: {
           id: purchaseId,
-          cedente: { owner: { team: session.team } },
+          
         },
         select: { id: true, finalizedAt: true },
       });

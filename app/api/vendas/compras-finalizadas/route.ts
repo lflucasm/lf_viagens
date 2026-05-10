@@ -76,7 +76,7 @@ export async function GET(req: Request) {
   // ✅ IMPORTANTe: não depender só de finalizedAt
   // (suas compras "LIBERADAS" podem estar CLOSED mas finalizedAt null)
   const where: any = {
-    cedente: { owner: { team: session.team } },
+    
     AND: [
       {
         OR: [

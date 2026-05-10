@@ -46,7 +46,7 @@ export async function POST(_req: Request, { params }: Ctx) {
     where: {
       id,
       status: "CLOSED",
-      cedente: { owner: { team: session.team } },
+      
     },
     select: { id: true, finalizedAt: true, observacao: true },
   });

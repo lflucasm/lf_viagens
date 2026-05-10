@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,9 +9,6 @@ export const revalidate = 0;
 
 type Role = "admin" | "staff" | "developer";
 
-const TEAM_LF = "LF Viagens";
-/** Mesmo identificador de time do admin em produção — necessário para filtrar dados ao testar como developer. */
-const TEAM_JEPHESSON = "@LF.Viagens";
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
@@ -118,7 +116,7 @@ async function seedUsersToDb() {
           login,
           name: u.name,
           email: u.email,
-          team: login === norm("jephesson") ? TEAM_JEPHESSON : TEAM_LF,
+          team: CANONICAL_OPERATION_TEAM,
           role: u.role,
           passwordHash: sha256(u.password),
         },
@@ -169,15 +167,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         return NextResponse.json({ ok: false, error: "Senha inválida" }, { status: 401, headers: noCacheHeaders() });
       }
 
-      let sessionUser = dbUser;
-      if (login === norm("jephesson")) {
-        await prisma.user.update({
-          where: { login },
-          data: { team: TEAM_JEPHESSON },
-        });
-        const fresh = await prisma.user.findUnique({ where: { login } });
-        if (fresh) sessionUser = fresh;
-      }
+      const sessionUser = dbUser;
 
       const res = NextResponse.json({ ok: true }, { headers: noCacheHeaders() });
       setSessionCookie(res, {
@@ -186,7 +176,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         role: (sessionUser.role === "admin" || sessionUser.role === "staff" || sessionUser.role === "developer"
           ? sessionUser.role
           : "staff") as Role,
-        team: sessionUser.team,
+        team: CANONICAL_OPERATION_TEAM,
         name: sessionUser.name,
         email: sessionUser.email ?? null,
       });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 function onlyDigits(v: string) {
   return (v || "").replace(/\D+/g, "").slice(0, 11);
@@ -32,7 +32,6 @@ export default function NovoFuncionarioPage() {
   const [cpf, setCpf] = useState("");
   const [login, setLogin] = useState("");
 
-  const [team, setTeam] = useState("LF Viagens");
   const [milheiroPayoutPercent, setMilheiroPayoutPercent] = useState("");
 
   const [password, setPassword] = useState("");
@@ -43,19 +42,6 @@ export default function NovoFuncionarioPage() {
     if (!inviteCode) return "";
     return `${appBase}/convite/${inviteCode}`;
   }, [appBase, inviteCode]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/session", { cache: "no-store" });
-        const j = await r.json().catch(() => ({}));
-        const t = String(j?.user?.team || "").trim();
-        if (t) setTeam(t);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
 
   async function copiarConvite() {
     try {
@@ -78,7 +64,6 @@ export default function NovoFuncionarioPage() {
         employeeId: slugifyId(employeeId),
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
-        team: team.trim(),
         password,
       };
       if (milRaw !== "") {
@@ -88,7 +73,6 @@ export default function NovoFuncionarioPage() {
       if (!payload.name) throw new Error("Nome obrigatório.");
       if (!payload.employeeId) throw new Error("ID obrigatório (ex: eduarda.freitas).");
       if (!payload.login) throw new Error("Login obrigatório.");
-      if (!String(payload.team || "").trim()) throw new Error("Time obrigatório.");
       if (!payload.password || String(payload.password).trim().length < 6) {
         throw new Error("Senha deve ter pelo menos 6 caracteres.");
       }
@@ -155,17 +139,6 @@ export default function NovoFuncionarioPage() {
         <div>
           <label className="block text-sm mb-1">Login</label>
           <input className="w-full rounded-xl border px-3 py-2" value={login} onChange={(e) => setLogin(e.target.value)} />
-        </div>
-
-        <div>
-          <label className="block text-sm mb-1">Time</label>
-          <input
-            className="w-full rounded-xl border px-3 py-2"
-            value={team}
-            onChange={(e) => setTeam(e.target.value)}
-            placeholder="LF Viagens"
-          />
-          <div className="text-xs text-slate-500 mt-1">Preenchido com o time da sua sessão; ajuste se necessário.</div>
         </div>
 
         <div>

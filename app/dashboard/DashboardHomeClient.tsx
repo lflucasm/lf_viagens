@@ -180,7 +180,6 @@ export default function DashboardHomeClient({
           <p className="mt-2 text-sm text-slate-600">
             Olá,{" "}
             <span className="font-medium text-slate-800">{session.name || session.login}</span>
-            <span className="text-slate-500"> · {session.team}</span>
           </p>
         </div>
       </div>

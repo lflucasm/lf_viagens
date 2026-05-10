@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
     const wherePurch: any = {
       status: "CLOSED",
       finalizedAt: { not: null },
-      cedente: { owner: { team: session.team } },
+      
     };
 
     if (q) {
@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
         smilesLocatorManualStatus: "DERRUBADO",
         smilesLocatorManualCheckedAt: { not: null },
         smilesLocatorLossCents: { gt: 0 },
-        cedente: { owner: { team: session.team } },
+        
         ...(q
           ? {
               OR: [

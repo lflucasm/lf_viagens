@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const cedentes = await prisma.cedente.findMany({
       where: {
         status: "APPROVED",
-        owner: { team: session.team },
+        
         ...(includeAll
           ? {}
           : {
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     if (!cedenteId) return bad("cedenteId é obrigatório.");
 
     const cedente = await prisma.cedente.findFirst({
-      where: { id: cedenteId, owner: { team: session.team } },
+      where: { id: cedenteId },
       select: { id: true },
     });
 

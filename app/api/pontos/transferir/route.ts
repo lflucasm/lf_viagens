@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { badRequest, ok, serverError, unauthorized } from "@/lib/api";
 import { getSessionServer } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import {
   applyProgramTransfer,
   isAllowedTransfer,
@@ -19,7 +20,7 @@ function normProgram(v: unknown): Program | null {
 export async function POST(req: Request) {
   try {
     const session = await getSessionServer();
-    if (!session?.id || !session.team) {
+    if (!session?.id) {
       return unauthorized("Faça login novamente.");
     }
 
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
     if (points <= 0) return badRequest("Informe a quantidade de pontos.");
 
     const ced = await prisma.cedente.findFirst({
-      where: { id: cedenteId, owner: { team: session.team } },
+      where: { id: cedenteId },
       select: { id: true, status: true },
     });
     if (!ced) return badRequest("Cedente não encontrado.");
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
 
     await prisma.$transaction(async (tx) => {
       await applyProgramTransfer(tx, {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         cedenteId,
         from,
         to,

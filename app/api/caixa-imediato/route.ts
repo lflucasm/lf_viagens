@@ -43,7 +43,7 @@ export async function GET() {
   }
 
   const rows = await prisma.caixaImediatoSnapshot.findMany({
-    where: { team: session.team },
+    where: {},
     orderBy: [{ createdAt: "desc" }, { date: "desc" }],
     take: 2000,
     select: {

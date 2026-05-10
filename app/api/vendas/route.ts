@@ -6,6 +6,7 @@ import { triggerEmployeePayoutAutoCompute } from "@/lib/payouts/autoCompute";
 import { calcPointsValueCents, clampInt, formatSaleNumber, pointsField } from "../_helpers/sales";
 import { deductInventoryOnSale, getAvgCostMilheiroCentsForSale } from "@/lib/program-inventory";
 import { isOperationalRole } from "@/lib/session-roles";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,9 +33,15 @@ function readSessionCookie(raw?: string): Sess | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(b64urlDecode(raw)) as Partial<Sess>;
-    if (!parsed?.id || !parsed?.login || !parsed?.team || !parsed?.role) return null;
+    if (!parsed?.id || !parsed?.login || !parsed?.role) return null;
     if (!isOperationalRole(parsed.role)) return null;
-    return parsed as Sess;
+    return {
+      ...parsed,
+      id: String(parsed.id),
+      login: String(parsed.login),
+      role: parsed.role as Sess["role"],
+      team: String(parsed.team || CANONICAL_OPERATION_TEAM),
+    } as Sess;
   } catch {
     return null;
   }
@@ -277,9 +284,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getServerSession();
   const userId = session?.id ?? null;
-  const sessionTeam = session?.team ?? null;
-
-  if (!userId || !sessionTeam) {
+  if (!userId) {
     return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
   }
 
@@ -373,7 +378,7 @@ export async function POST(req: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const effectiveSellerId = sellerIdRaw || userId;
       const seller = await tx.user.findFirst({
-        where: { id: effectiveSellerId, team: sessionTeam },
+        where: { id: effectiveSellerId },
         select: { id: true },
       });
       if (!seller) throw new Error("Vendedor não encontrado.");
@@ -528,7 +533,7 @@ export async function POST(req: Request) {
       });
 
       await deductInventoryOnSale(tx, {
-        team: sessionTeam,
+        team: CANONICAL_OPERATION_TEAM,
         cedenteId,
         program,
         pointsSold: points,
@@ -539,7 +544,7 @@ export async function POST(req: Request) {
     });
 
     const payoutAutoCompute = await triggerEmployeePayoutAutoCompute(req, {
-      team: sessionTeam,
+      team: CANONICAL_OPERATION_TEAM,
       fallbackBasis: "SALE_DATE",
     });
 

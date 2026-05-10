@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
         departureDate: { gte: startAt, lt: endAt },
         locator: { not: null },
         NOT: { locator: "" },
-        cedente: { owner: { team: session.team } },
+        
       },
       orderBy: [{ departureDate: "asc" }, { locator: "asc" }],
       select: {

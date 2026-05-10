@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -225,8 +226,7 @@ export async function GET(req: NextRequest) {
       getMembersWithColors(session.team),
       prisma.agendaEvent.findMany({
         where: {
-          team: session.team,
-          status: "ACTIVE",
+                    status: "ACTIVE",
           dateISO: { gte: startISO, lte: endISO },
         },
         include: {
@@ -300,7 +300,7 @@ export async function POST(req: NextRequest) {
 
     // conflitos (mesmo user + mesma data)
     const existing = await prisma.agendaEvent.findMany({
-      where: { team: session.team, status: "ACTIVE", dateISO, userId },
+      where: { status: "ACTIVE", dateISO, userId },
       select: { id: true, type: true, startMin: true, endMin: true },
     });
 
@@ -316,7 +316,7 @@ export async function POST(req: NextRequest) {
 
     const created = await prisma.agendaEvent.create({
       data: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         type,
         status: "ACTIVE",
         dateISO,
@@ -327,7 +327,7 @@ export async function POST(req: NextRequest) {
         createdById: session.id,
         audits: {
           create: {
-            team: session.team,
+            team: CANONICAL_OPERATION_TEAM,
             action: "CREATE",
             actorId: session.id,
             toUserId: userId,
@@ -356,7 +356,7 @@ export async function PATCH(req: NextRequest) {
     if (!body) return bad("JSON inválido.");
 
     const existing = await prisma.agendaEvent.findFirst({
-      where: { id, team: session.team },
+      where: { id },
       select: {
         id: true,
         userId: true,
@@ -383,8 +383,7 @@ export async function PATCH(req: NextRequest) {
       // conflito com agenda do destino
       const destEvents = await prisma.agendaEvent.findMany({
         where: {
-          team: session.team,
-          status: "ACTIVE",
+                    status: "ACTIVE",
           dateISO: existing.dateISO,
           userId: toUserId,
         },
@@ -402,7 +401,7 @@ export async function PATCH(req: NextRequest) {
           userId: toUserId,
           audits: {
             create: {
-              team: session.team,
+              team: CANONICAL_OPERATION_TEAM,
               action: "SWAP",
               actorId: session.id,
               fromUserId: existing.userId,
@@ -441,8 +440,7 @@ export async function PATCH(req: NextRequest) {
     // conflito com outros eventos do próprio user (exclui ele mesmo)
     const conflicts = await prisma.agendaEvent.findMany({
       where: {
-        team: session.team,
-        status: "ACTIVE",
+                status: "ACTIVE",
         dateISO: existing.dateISO,
         userId: existing.userId,
         NOT: { id: existing.id },
@@ -464,7 +462,7 @@ export async function PATCH(req: NextRequest) {
         note: nextNote,
         audits: {
           create: {
-            team: session.team,
+            team: CANONICAL_OPERATION_TEAM,
             action: "UPDATE",
             actorId: session.id,
             fromStartMin: existing.startMin,
@@ -491,7 +489,7 @@ export async function DELETE(req: NextRequest) {
     if (!id) return bad("Informe ?id=...");
 
     const existing = await prisma.agendaEvent.findFirst({
-      where: { id, team: session.team },
+      where: { id },
       select: {
         id: true,
         dateISO: true,
@@ -516,7 +514,7 @@ export async function DELETE(req: NextRequest) {
         canceledById: session.id,
         audits: {
           create: {
-            team: session.team,
+            team: CANONICAL_OPERATION_TEAM,
             action: "DELETE",
             actorId: session.id,
             fromUserId: existing.userId,

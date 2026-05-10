@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 type FuncItem = {
   id: string;
@@ -9,7 +8,6 @@ type FuncItem = {
   employeeId: string | null;
   login: string;
   cpf: string | null;
-  team: string;
   role: string;
   inviteCode: string | null;
   createdAt: string;
@@ -42,7 +40,6 @@ function baseUrl() {
 }
 
 export default function FuncionarioEditClient({ id }: { id: string }) {
-  const router = useRouter();
   const [item, setItem] = useState<FuncItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -55,7 +52,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   const [employeeId, setEmployeeId] = useState("");
   const [cpf, setCpf] = useState("");
   const [login, setLogin] = useState("");
-  const [team, setTeam] = useState("");
   const [role, setRole] = useState<"admin" | "staff" | "developer">("staff");
   const [balcaoCommissionPercent, setBalcaoCommissionPercent] = useState("");
   const [milheiroPayoutPercent, setMilheiroPayoutPercent] = useState("");
@@ -79,7 +75,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setEmployeeId(u.employeeId || "");
       setCpf(u.cpf || "");
       setLogin(u.login || "");
-      setTeam((u.team || "").trim());
       const r = (u.role || "staff").toLowerCase();
       if (r === "admin" || r === "staff" || r === "developer") setRole(r);
       else setRole("staff");
@@ -116,7 +111,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
         employeeId: slugifyId(employeeId),
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
-        team: team.trim(),
         role,
       };
 
@@ -130,7 +124,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       if (!payload.name) throw new Error("Nome obrigatório.");
       if (!payload.employeeId) throw new Error("ID obrigatório (ex: eduarda.freitas).");
       if (!payload.login) throw new Error("Login obrigatório.");
-      if (!String(payload.team || "").trim()) throw new Error("Time obrigatório.");
 
       if (
         payload.balcaoSellerCommissionPercent !== null &&
@@ -158,14 +151,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
 
       const json = await res.json();
       if (!json?.ok) throw new Error(json?.error || "Erro ao salvar.");
-
-      const newTeam = String(json?.data?.team ?? "").trim();
-      if (item.team && newTeam && newTeam !== item.team.trim()) {
-        setMsg("✅ Time alterado. Redirecionando…");
-        router.push("/dashboard/funcionarios");
-        router.refresh();
-        return;
-      }
 
       setItem((prev) => (prev ? { ...prev, ...json.data } : prev));
       setMsg("✅ Dados salvos com sucesso.");
@@ -341,20 +326,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
             </p>
           </div>
 
-          <div>
-            <label className="block text-sm mb-1">Time</label>
-            <input
-              className="w-full rounded-xl border px-3 py-2"
-              value={team}
-              onChange={(e) => setTeam(e.target.value)}
-              placeholder="LF Viagens"
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Identificador do time no sistema (mesmo valor usado em sessão e filtros). Ao mudar, o funcionário passa a
-              aparecer apenas no novo time.
-            </p>
-          </div>
-
           <button type="submit" disabled={saving} className="rounded-xl bg-black px-4 py-2 text-white disabled:opacity-60">
             {saving ? "Salvando..." : "Salvar dados"}
           </button>
@@ -417,8 +388,8 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
             <div className="text-sm font-semibold text-rose-900">Zona de risco</div>
             <p className="text-xs text-rose-800/90">
               Ao excluir, cedentes e vínculos bloqueantes são transferidos para você (admin logado). Leads VIP do
-              funcionário são removidos. O último administrador de um time não pode ser excluído nem perder o papel
-              admin sem outro admin no mesmo time.
+              funcionário são removidos. O último administrador da operação não pode ser excluído nem deixar de ser
+              admin sem outro administrador.
             </p>
             <button
               type="button"

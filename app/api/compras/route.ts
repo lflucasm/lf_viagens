@@ -229,7 +229,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getSessionServer();
-    if (!session?.id || !session.team) {
+    if (!session?.id) {
       return unauthorized("Faça login novamente.");
     }
 
@@ -241,12 +241,8 @@ export async function POST(req: Request) {
 
     const ced = await prisma.cedente.findFirst({
       where: { id: rawCedenteId },
-      include: { owner: { select: { team: true } } },
     });
     if (!ced) return badRequest("Cedente não encontrado.");
-    if (ced.owner.team !== session.team) {
-      return badRequest("Cedente não pertence ao seu time.");
-    }
     const cedenteId = ced.id;
 
     const numero = await nextNumeroCompra();

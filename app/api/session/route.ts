@@ -1,6 +1,7 @@
 // app/api/session/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export async function GET() {
       sess = null;
     }
 
-    if (!sess?.id || !sess?.login || !sess?.team || !sess?.role) {
+    if (!sess?.id || !sess?.login || !sess?.role) {
       return NextResponse.json(
         { ok: true, hasSession: false, user: null },
         { headers: noCache() }
@@ -62,7 +63,7 @@ export async function GET() {
     const user = {
       id: String(sess.id),
       login,
-      team: String(sess.team),
+      team: CANONICAL_OPERATION_TEAM,
       role: sess.role,
       name: (sess.name && String(sess.name).trim()) || login,
       email: sess.email ?? null,

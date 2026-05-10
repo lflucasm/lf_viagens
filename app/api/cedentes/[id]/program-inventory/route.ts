@@ -36,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!session) return bad("Não autenticado", 401);
 
   const cedente = await prisma.cedente.findFirst({
-    where: { id: cedenteId, owner: { team: session.team } },
+    where: { id: cedenteId },
     select: {
       id: true,
       identificador: true,

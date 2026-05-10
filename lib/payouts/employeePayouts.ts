@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 import type { LoyaltyProgram, Settings } from "@prisma/client";
 import { resolveMilheiroSellerPayoutPercent } from "@/lib/milheiro-seller-payout-percent";
 
@@ -224,7 +225,7 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
   const sales = await prisma.sale.findMany({
     where: {
       date: { gte: start, lt: end },
-      cedente: { owner: { team: session.team } },
+      
       paymentStatus: { not: "CANCELED" },
     },
     select: {
@@ -302,8 +303,7 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
   // remove payouts “lixo” não pagos e sem movimento
   await prisma.employeePayout.deleteMany({
     where: {
-      team: session.team,
-      date,
+            date,
       paidById: null,
       userId: { notIn: userIds.length ? userIds : ["__none__"] },
     },
@@ -320,9 +320,9 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
     const net = gross - tax + a.feeCents;
 
     await prisma.employeePayout.upsert({
-      where: { team_date_userId: { team: session.team, date, userId } },
+      where: { team_date_userId: { team: CANONICAL_OPERATION_TEAM, date, userId } },
       create: {
-        team: session.team,
+        team: CANONICAL_OPERATION_TEAM,
         date,
         userId,
         grossProfitCents: gross,

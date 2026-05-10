@@ -51,7 +51,7 @@ export async function GET() {
 
     const rows = await prisma.cedente.findMany({
       where: {
-        owner: { team: session.team },
+        
         status: { in: [CedenteStatus.PENDING, CedenteStatus.APPROVED] },
       },
       select: {
@@ -135,7 +135,7 @@ export async function PATCH(req: NextRequest) {
     const cedente = await prisma.cedente.findFirst({
       where: {
         id: cedenteId,
-        owner: { team: session.team },
+        
       },
       select: { id: true },
     });

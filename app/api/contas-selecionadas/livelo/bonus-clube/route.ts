@@ -49,8 +49,7 @@ export async function GET(req: NextRequest) {
 
     const rows = await prisma.clubSubscription.findMany({
       where: {
-        team: session.team,
-        program: "LIVELO",
+                program: "LIVELO",
         status: { in: statusIn as any },
       },
       distinct: ["cedenteId"],
@@ -110,8 +109,7 @@ export async function PATCH(req: NextRequest) {
     const existing = await prisma.clubSubscription.findFirst({
       where: {
         id,
-        team: session.team,
-        program: "LIVELO",
+                program: "LIVELO",
       },
       select: { id: true },
     });

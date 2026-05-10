@@ -26,7 +26,7 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
 
   // garante que a dívida é do team do usuário
   const parent = await prisma.dividaAReceber.findFirst({
-    where: { id: payment.dividaId, team: session.team },
+    where: { id: payment.dividaId },
     select: { id: true, totalCents: true, status: true },
   });
   if (!parent)

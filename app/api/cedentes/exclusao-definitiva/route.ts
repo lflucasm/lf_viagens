@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import crypto from "node:crypto";
+import { CANONICAL_OPERATION_TEAM } from "@/lib/canonical-team";
 
 type SessionCookie = {
   id: string;
@@ -122,7 +123,6 @@ export async function GET(req: Request) {
       const cedente = await prisma.cedente.findFirst({
         where: {
           id: cedenteId,
-          owner: { team: session.team },
         },
         select: {
           id: true,
@@ -161,7 +161,7 @@ export async function GET(req: Request) {
     }
 
     const rows = await prisma.cedenteExclusion.findMany({
-      where: { team: session.team },
+      where: {},
       orderBy: { createdAt: "desc" },
       take: 500,
       select: {
@@ -236,9 +236,6 @@ export async function POST(req: Request) {
       });
 
       if (!ced) throw new Error("Cedente não encontrado.");
-      if (ced.owner.team !== auth.team) {
-        throw new Error("Sem permissão para excluir cedente de outro time.");
-      }
 
       if (mode === "ACCOUNT") {
         const salesPreserved = await tx.sale.count({ where: { cedenteId } });
@@ -300,7 +297,7 @@ export async function POST(req: Request) {
 
         await tx.cedenteExclusion.create({
           data: {
-            team: auth.team,
+            team: CANONICAL_OPERATION_TEAM,
             cedenteId: ced.id,
             cedenteIdentificador: ced.identificador,
             cedenteNomeCompleto: ced.nomeCompleto,
@@ -387,7 +384,7 @@ export async function POST(req: Request) {
 
       await tx.cedenteExclusion.create({
         data: {
-          team: auth.team,
+          team: CANONICAL_OPERATION_TEAM,
           cedenteId: ced.id,
           cedenteIdentificador: ced.identificador,
           cedenteNomeCompleto: ced.nomeCompleto,
@@ -432,7 +429,7 @@ export async function PATCH(req: Request) {
 
     const result = await prisma.$transaction(async (tx) => {
       const exclusion = await tx.cedenteExclusion.findFirst({
-        where: { id: exclusionId, team: auth.team },
+        where: { id: exclusionId },
         select: {
           id: true,
           team: true,
@@ -481,9 +478,6 @@ export async function PATCH(req: Request) {
           "O cadastro-base do cedente não existe mais. Para restaurar completo, será necessário usar backup.",
           404
         );
-      }
-      if (cedente.owner.team !== auth.team) {
-        throw httpError("Sem permissão para restaurar cedente de outro time.", 403);
       }
 
       const cpfOwner = await tx.cedente.findUnique({
