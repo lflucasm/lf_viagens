@@ -791,6 +791,7 @@ export default function Sidebar() {
             onToggle={() => setOpenCompras((v) => !v)}
           >
             <NavLink href="/dashboard/compras/nova">Efetuar compra</NavLink>
+            <NavLink href="/dashboard/compras/transferir">Transferir pontos</NavLink>
             <NavLink href="/dashboard/compras" exact>
               Visualizar compras
             </NavLink>

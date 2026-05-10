@@ -16,6 +16,8 @@ function pointsForMilheiro(compra: Purchase) {
 
   if (cia === "LATAM") return asInt(c.saldoPrevistoLatam ?? c.expectedLatamPoints ?? c.pontosCiaTotal ?? 0);
   if (cia === "SMILES") return asInt(c.saldoPrevistoSmiles ?? c.expectedSmilesPoints ?? c.pontosCiaTotal ?? 0);
+  if (cia === "LIVELO") return asInt(c.saldoPrevistoLivelo ?? c.pontosCiaTotal ?? 0);
+  if (cia === "ESFERA") return asInt(c.saldoPrevistoEsfera ?? c.pontosCiaTotal ?? 0);
 
   return asInt(c.pontosCiaTotal ?? 0);
 }
@@ -36,23 +38,14 @@ export async function recomputeCompra(purchaseId: string) {
     0
   );
 
-  // ✅ igual ao frontend: subtotal = itens + taxa do cedente
-  const subtotalCents = itemsCostCents + asInt((compra as any).cedentePayCents, 0);
+  /** Compras operacionais: custo = só itens (sem taxa cedente, sem comissão vendedor, sem markup). */
+  const subtotalCents = itemsCostCents;
+  const comissaoCents = 0;
+  const totalCents = subtotalCents;
 
-  // ✅ igual ao frontend: comissão em cima do subtotal
-  const comissaoCents = roundInt(
-    (subtotalCents * asInt((compra as any).vendorCommissionBps, 0)) / 10000
-  );
-
-  // ✅ igual ao frontend: total = subtotal + comissão
-  const totalCents = subtotalCents + comissaoCents;
-
-  // ✅ milheiro usa "Esperado" da CIA (quando existir)
   const pontos = Math.max(0, pointsForMilheiro(compra));
   const custoMilheiroCents = pontos > 0 ? roundInt((totalCents * 1000) / pontos) : 0;
-
-  // ✅ meta = custoMilheiro + markup
-  const metaMilheiroCents = custoMilheiroCents + asInt((compra as any).metaMarkupCents, 0);
+  const metaMilheiroCents = custoMilheiroCents;
 
   const updated = await prisma.purchase.update({
     where: { id: compra.id },

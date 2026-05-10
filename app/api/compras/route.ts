@@ -4,7 +4,6 @@ import { ok, badRequest, serverError, unauthorized } from "@/lib/api";
 import { nextNumeroCompra } from "@/lib/compraNumero";
 import { recomputeCompra } from "@/lib/compras";
 import { getSessionServer } from "@/lib/auth-server";
-import { ensureOperationalHouseCedente } from "@/lib/house-cedente";
 import { Prisma, LoyaltyProgram } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +28,7 @@ function toPurchaseRow(
     numero: p.numero,
     status: p.status,
     createdAt: p.createdAt, // Date -> JSON vira ISO automaticamente
+    liberadoEm: p.liberadoEm ?? null,
 
     // ✅ compat no OUTPUT (a UI espera "ciaProgram")
     // No Prisma/DB o campo é "ciaAerea"
@@ -237,37 +237,32 @@ export async function POST(req: Request) {
     if (!body) return badRequest("JSON inválido.");
 
     const rawCedenteId = String(body.cedenteId || "").trim();
+    if (!rawCedenteId) return badRequest("Selecione o cedente.");
 
-    let cedenteId: string;
-    if (rawCedenteId) {
-      const ced = await prisma.cedente.findFirst({
-        where: { id: rawCedenteId },
-        include: { owner: { select: { team: true } } },
-      });
-      if (!ced) return badRequest("Cedente não encontrado.");
-      if (ced.owner.team !== session.team) {
-        return badRequest("Cedente não pertence ao seu time.");
-      }
-      cedenteId = ced.id;
-    } else {
-      cedenteId = await ensureOperationalHouseCedente(prisma, session.team, session.id);
+    const ced = await prisma.cedente.findFirst({
+      where: { id: rawCedenteId },
+      include: { owner: { select: { team: true } } },
+    });
+    if (!ced) return badRequest("Cedente não encontrado.");
+    if (ced.owner.team !== session.team) {
+      return badRequest("Cedente não pertence ao seu time.");
     }
+    const cedenteId = ced.id;
 
     const numero = await nextNumeroCompra();
 
-    // ✅ compat: aceitar nomes antigos e novos
     const rawProgram = body.ciaProgram ?? body.ciaAerea ?? null;
     const ciaAerea = rawProgram ? normalizeEnumQ(String(rawProgram)) : null;
 
-    if (rawProgram && !ciaAerea) {
-      return badRequest("Programa/Cia inválido. Use: LATAM, SMILES, LIVELO, ESFERA.");
+    if (!ciaAerea) {
+      return badRequest("Programa é obrigatório (LATAM, SMILES, LIVELO ou ESFERA).");
     }
 
     const ciaPointsTotal = asInt(body.ciaPointsTotal ?? body.pontosCiaTotal ?? 0);
 
-    const cedentePayCents = asInt(body.cedentePayCents ?? 0);
-    const vendorCommissionBps = asInt(body.vendorCommissionBps ?? 100);
-    const metaMarkupCents = asInt(body.metaMarkupCents ?? body.targetMarkupCents ?? 150);
+    const cedentePayCents = 0;
+    const vendorCommissionBps = 0;
+    const metaMarkupCents = 0;
 
     const observacao =
       body.observacao != null

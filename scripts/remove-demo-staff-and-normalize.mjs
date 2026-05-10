@@ -6,6 +6,8 @@
  * - Remove links/leads VIP WhatsApp do funcionário (leads em cascata removem pagamentos).
  * - Define `lucas_fellype` como admin com time "LF Viagens".
  * - Define `jephesson` como developer com time "LF Viagens".
+ * - Migra usuários com time legado (ex.: `@vias_aereas`) para "LF Viagens" — único time
+ *   usado pelo sistema.
  *
  * Uso:
  *   DATABASE_URL="postgresql://..." node scripts/remove-demo-staff-and-normalize.mjs
@@ -21,6 +23,8 @@ const REMOVE_LOGINS = ["eduarda", "paola", "lucas"];
 const ADMIN_LOGIN = "lucas_fellype";
 const DEV_LOGIN = "jephesson";
 const TEAM_LF = "LF Viagens";
+/** Valores antigos de `team` no banco; todo mundo deve ficar em TEAM_LF. */
+const LEGACY_TEAMS = ["@vias_aereas", "vias_aereas"];
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -103,6 +107,14 @@ async function main() {
       where: { login: norm(DEV_LOGIN) },
       data: { team: TEAM_LF, role: "developer" },
     });
+
+    const migrated = await prisma.user.updateMany({
+      where: { team: { in: LEGACY_TEAMS } },
+      data: { team: TEAM_LF },
+    });
+    if (migrated.count > 0) {
+      console.log(`[team] ${migrated.count} usuário(s) migrados para "${TEAM_LF}" (times legados).`);
+    }
 
     console.log(`Concluído: ${ADMIN_LOGIN} (admin) e ${DEV_LOGIN} (developer) no time "${TEAM_LF}".`);
   } finally {

@@ -11,6 +11,7 @@ type PurchaseRowRaw = {
   numero: string;
   status: PurchaseStatus;
   createdAt: string;
+  liberadoEm?: string | null;
 
   ciaProgram?: LoyaltyProgram | null;
   ciaAerea?: LoyaltyProgram | null;
@@ -35,6 +36,7 @@ type PurchaseRow = {
   numero: string;
   status: PurchaseStatus;
   createdAt: string;
+  liberadoEm: string | null;
 
   ciaProgram: LoyaltyProgram | null;
   ciaPointsTotal: number;
@@ -60,6 +62,7 @@ function normalizeRow(r: PurchaseRowRaw): PurchaseRow {
     numero: r.numero,
     status: r.status,
     createdAt: r.createdAt,
+    liberadoEm: r.liberadoEm ?? null,
 
     ciaProgram: (r.ciaProgram ?? r.ciaAerea ?? null) as any,
     ciaPointsTotal: asInt((r.ciaPointsTotal ?? r.pontosCiaTotal ?? 0) as any),
@@ -241,8 +244,6 @@ export default function ComprasClient() {
       const m = milheiroCents(r.ciaPointsTotal || 0, r.totalCostCents || 0);
 
       const hay = [
-        r.numero,
-        r.id,
         r.ciaProgram || "",
         String(r.ciaPointsTotal || 0),
         fmtMoneyBR(r.totalCostCents || 0),
@@ -317,7 +318,12 @@ export default function ComprasClient() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Compras</h1>
-          <p className="text-sm text-gray-600">Visualize, edite, libere ou cancele compras.</p>
+          <p className="text-sm text-gray-600">
+            Por programa: data de inclusão no saldo (liberação) e valores.{" "}
+            <Link href="/dashboard/compras/transferir" className="text-blue-700 underline">
+              Transferir pontos
+            </Link>
+          </p>
         </div>
 
         <Link href="/dashboard/compras/nova" className="rounded-md bg-black px-3 py-2 text-sm text-white">
@@ -333,7 +339,7 @@ export default function ComprasClient() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Número, nome, CPF, identificador..."
+              placeholder="Nome, CPF, programa, cedente…"
             />
           </div>
 
@@ -391,14 +397,14 @@ export default function ComprasClient() {
         <table className="min-w-[1180px] w-full text-sm">
           <thead className="bg-gray-50">
             <tr className="text-left">
-              <th className="p-3">Compra</th>
+              <th className="p-3">Programa</th>
               <th className="p-3">Status</th>
               <th className="p-3">Cedente</th>
-              <th className="p-3">CIA</th>
-              <th className="p-3">Pts CIA</th>
+              <th className="p-3">Pontos (prog.)</th>
               <th className="p-3">Milheiro</th>
-              <th className="p-3">Total</th>
-              <th className="p-3">Criada em</th>
+              <th className="p-3">Custo</th>
+              <th className="p-3">Inclusão no saldo</th>
+              <th className="p-3">Rascunho criado</th>
               <th className="p-3"></th>
             </tr>
           </thead>
@@ -421,11 +427,7 @@ export default function ComprasClient() {
 
               return (
                 <tr key={r.id} className="border-t">
-                  <td className="p-3">
-                    <div className="font-mono" title={r.id}>
-                      {r.numero}
-                    </div>
-                  </td>
+                  <td className="p-3 font-medium">{r.ciaProgram || "—"}</td>
 
                   <td className="p-3">
                     <StatusPill status={r.status} />
@@ -444,8 +446,6 @@ export default function ComprasClient() {
                     )}
                   </td>
 
-                  <td className="p-3">{r.ciaProgram || "—"}</td>
-
                   <td className="p-3 font-mono">{(r.ciaPointsTotal || 0).toLocaleString("pt-BR")}</td>
 
                   <td className="p-3 font-medium">
@@ -455,7 +455,11 @@ export default function ComprasClient() {
 
                   <td className="p-3 font-medium">{fmtMoneyBR(r.totalCostCents || 0)}</td>
 
-                  <td className="p-3">{fmtDateBR(r.createdAt)}</td>
+                  <td className="p-3 text-xs">
+                    {r.liberadoEm ? fmtDateBR(r.liberadoEm) : <span className="text-gray-400">—</span>}
+                  </td>
+
+                  <td className="p-3 text-xs text-gray-600">{fmtDateBR(r.createdAt)}</td>
 
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-2">
@@ -468,7 +472,7 @@ export default function ComprasClient() {
                         onClick={() => setPointsModalId(r.id)}
                         disabled={isBusy || isCanceled || !isReleased}
                         className="rounded-md bg-indigo-600 px-2 py-1 text-xs text-white disabled:opacity-50"
-                        title="Adicionar mais itens de compra de pontos usando o mesmo ID"
+                        title="Abrir esta compra para incluir mais pontos ou clube"
                       >
                         Comprar mais
                       </button>

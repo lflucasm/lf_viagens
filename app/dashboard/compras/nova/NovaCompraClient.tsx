@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 type LoyaltyProgram = "LATAM" | "SMILES" | "LIVELO" | "ESFERA";
@@ -14,76 +14,25 @@ type Cedente = {
   pontosSmiles: number;
   pontosLivelo: number;
   pontosEsfera: number;
-  scoreMedia?: number;
 };
 
-type PurchaseStatus = "OPEN" | "DRAFT" | "READY" | "CLOSED" | "CANCELED";
-
-type PurchaseItemType =
-  | "CLUB"
-  | "POINTS_BUY"
-  | "TRANSFER"
-  | "ADJUSTMENT"
-  | "EXTRA_COST";
-
-type TransferMode = "FULL_POINTS" | "POINTS_PLUS_CASH";
+type PurchaseItemType = "CLUB" | "POINTS_BUY";
 
 type PurchaseItem = {
   id?: string;
   type: PurchaseItemType;
   title: string;
-  details?: string;
-
+  details?: string | null;
   programFrom?: LoyaltyProgram | null;
   programTo?: LoyaltyProgram | null;
-
   pointsBase: number;
   bonusMode?: "PERCENT" | "TOTAL" | "" | null;
   bonusValue?: number | null;
   pointsFinal: number;
-
-  transferMode?: TransferMode | null;
+  transferMode?: null;
   pointsDebitedFromOrigin: number;
-
   amountCents: number;
 };
-
-type PurchaseDraft = {
-  id: string;
-  numero: string;
-  status: PurchaseStatus;
-
-  cedenteId: string;
-
-  ciaProgram: LoyaltyProgram | null;
-  ciaPointsTotal: number;
-
-  cedentePayCents: number;
-  vendorCommissionBps: number;
-  targetMarkupCents: number;
-
-  subtotalCostCents: number;
-  vendorCommissionCents: number;
-  totalCostCents: number;
-
-  costPerKiloCents: number;
-  targetPerKiloCents: number;
-
-  expectedLatamPoints: number | null;
-  expectedSmilesPoints: number | null;
-  expectedLiveloPoints: number | null;
-  expectedEsferaPoints: number | null;
-
-  note: string | null;
-
-  items: PurchaseItem[];
-};
-
-const OPERATIONAL_HOUSE_IDENT_PREFIX = "ESTOQUE-OP-";
-
-function isOperationalHouseCedente(c: Cedente | null | undefined): boolean {
-  return !!c?.identificador?.startsWith(OPERATIONAL_HOUSE_IDENT_PREFIX);
-}
 
 type ClubMeta = {
   program: LoyaltyProgram;
@@ -92,161 +41,26 @@ type ClubMeta = {
   renewalDay: number;
   startDateISO: string;
   bonusPoints: number;
-  /** Assinatura recorrente (mensalidade/anuidade). */
   isRecurrent?: boolean;
   billingCycle?: "MONTHLY" | "ANNUAL";
 };
 
-function clubPtsPerMonth(meta: ClubMeta) {
-  return Math.max(1, meta.tierK * 1000 + Math.max(0, meta.bonusPoints || 0));
-}
-
-function clubEffectivePriceCentsPerMonth(meta: ClubMeta) {
-  const p = meta.priceCents || 0;
-  if (meta.isRecurrent === false) return p;
-  if (meta.billingCycle === "ANNUAL") return Math.round(p / 12);
-  return p;
-}
-
-function clubMilheiroEstimateCents(meta: ClubMeta) {
-  const pts = clubPtsPerMonth(meta);
-  const eff = clubEffectivePriceCentsPerMonth(meta);
-  if (pts <= 0 || eff <= 0) return 0;
-  return Math.round((eff * 1000) / pts);
-}
-
-function fmtMoneyBR(cents: number) {
-  const v = (cents || 0) / 100;
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-function clampInt(n: any) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.trunc(x);
-}
-function roundCents(n: number) {
-  return Math.round(n);
-}
-function isoToday() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-function clampDay(n: any) {
-  const x = clampInt(n);
-  if (x <= 0) return 1;
-  if (x > 31) return 31;
-  return x;
-}
-function safeJsonParse<T>(s?: string | null): T | null {
-  if (!s) return null;
-  try {
-    return JSON.parse(s) as T;
-  } catch {
-    return null;
-  }
-}
-
-function calcItemPointsFinal(item: PurchaseItem) {
-  const base = clampInt(item.pointsBase);
-  const mode = item.bonusMode || "";
-  const val = item.bonusValue ?? 0;
-
-  if (!mode) return base;
-
-  if (mode === "PERCENT") {
-    const pct = Math.max(0, clampInt(val));
-    const bonus = Math.round((base * pct) / 100);
-    return base + bonus;
-  }
-
-  if (mode === "TOTAL") {
-    const total = Math.max(0, clampInt(val));
-    return base + total;
-  }
-
-  return base;
-}
-
-function pointsForMilheiro(d: PurchaseDraft) {
-  const cia = d.ciaProgram;
-  if (cia === "LATAM")
-    return clampInt(d.expectedLatamPoints ?? d.ciaPointsTotal ?? 0);
-  if (cia === "SMILES")
-    return clampInt(d.expectedSmilesPoints ?? d.ciaPointsTotal ?? 0);
-  return clampInt(d.ciaPointsTotal ?? 0);
-}
-
-function computeTotals(d: PurchaseDraft) {
-  const itemsArr = Array.isArray(d.items) ? d.items : [];
-  const itemsCost = itemsArr.reduce(
-    (acc, it) => acc + (it.amountCents || 0),
-    0
-  );
-
-  const subtotal = itemsCost + (d.cedentePayCents || 0);
-
-  const vendor = roundCents(
-    (subtotal * (d.vendorCommissionBps || 0)) / 10000
-  );
-  const total = subtotal + vendor;
-
-  const pts = Math.max(0, pointsForMilheiro(d));
-  const denom = pts / 1000;
-
-  const costPerKilo = denom > 0 ? roundCents(total / denom) : 0;
-  const targetPerKilo = costPerKilo + (d.targetMarkupCents || 0);
-
-  return {
-    subtotalCostCents: subtotal,
-    vendorCommissionCents: vendor,
-    totalCostCents: total,
-    costPerKiloCents: costPerKilo,
-    targetPerKiloCents: targetPerKilo,
-  };
-}
-
-function computeProgramDeltas(items: PurchaseItem[]) {
-  const out: Record<LoyaltyProgram, number> = {
-    LATAM: 0,
-    SMILES: 0,
-    LIVELO: 0,
-    ESFERA: 0,
-  };
-
-  const arr = Array.isArray(items) ? items : [];
-  for (const it of arr) {
-    if (it.programTo) out[it.programTo] += clampInt(it.pointsFinal);
-    if (it.programFrom)
-      out[it.programFrom] -= clampInt(it.pointsDebitedFromOrigin);
-  }
-  return out;
-}
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    cache: "no-store",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-  });
-
-  const text = await res.text().catch(() => "");
-  let data: any = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { raw: text };
-  }
-
-  if (!res.ok || data?.ok === false) {
-    console.error("API FAIL:", url, res.status, data);
-    throw new Error(data?.error || `Erro ${res.status}`);
-  }
-  return data as T;
-}
+type PurchaseDraft = {
+  id: string;
+  numero: string;
+  status: string;
+  cedenteId: string;
+  ciaProgram: LoyaltyProgram | null;
+  ciaPointsTotal: number;
+  note: string | null;
+  items: PurchaseItem[];
+  expectedLatamPoints: number | null;
+  expectedSmilesPoints: number | null;
+  expectedLiveloPoints: number | null;
+  expectedEsferaPoints: number | null;
+  totalCostCents: number;
+  costPerKiloCents: number;
+};
 
 const PROGRAM_LABEL: Record<LoyaltyProgram, string> = {
   LATAM: "LATAM",
@@ -257,521 +71,512 @@ const PROGRAM_LABEL: Record<LoyaltyProgram, string> = {
 
 const CLUB_TIERS = [1, 2, 3, 5, 7, 10, 12, 15, 20];
 
-/** ✅ NORMALIZAÇÃO CENTRAL (mata o reduce undefined) */
-function normalizeItem(it: any): PurchaseItem {
+function clampInt(n: unknown) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.trunc(x);
+}
+
+function roundCents(n: number) {
+  return Math.round(n);
+}
+
+function isoToday() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function clampDay(n: unknown) {
+  const x = clampInt(n);
+  if (x <= 0) return 1;
+  if (x > 31) return 31;
+  return x;
+}
+
+function fmtMoneyBR(cents: number) {
+  const v = (cents || 0) / 100;
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function calcItemPointsFinal(item: {
+  pointsBase: number;
+  bonusMode?: string | null;
+  bonusValue?: number | null;
+}) {
+  const base = clampInt(item.pointsBase);
+  const mode = item.bonusMode || "";
+  const val = item.bonusValue ?? 0;
+  if (!mode) return base;
+  if (mode === "PERCENT") {
+    const pct = Math.max(0, clampInt(val));
+    return base + Math.round((base * pct) / 100);
+  }
+  if (mode === "TOTAL") return base + Math.max(0, clampInt(val));
+  return base;
+}
+
+function norm(v?: string) {
+  return (v || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function onlyDigits(v?: string) {
+  return (v || "").replace(/\D+/g, "");
+}
+
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    cache: "no-store",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+  });
+  const text = await res.text().catch(() => "");
+  let data: Record<string, unknown> = {};
+  try {
+    data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    data = { raw: text };
+  }
+  if (!res.ok || data?.ok === false) {
+    throw new Error(String(data?.error || `Erro ${res.status}`));
+  }
+  return data as T;
+}
+
+function pointsOnCedente(c: Cedente, p: LoyaltyProgram): number {
+  if (p === "LATAM") return c.pontosLatam;
+  if (p === "SMILES") return c.pontosSmiles;
+  if (p === "LIVELO") return c.pontosLivelo;
+  return c.pontosEsfera;
+}
+
+function buildExpected(
+  c: Cedente,
+  program: LoyaltyProgram,
+  deltaPts: number
+): Pick<
+  PurchaseDraft,
+  | "expectedLatamPoints"
+  | "expectedSmilesPoints"
+  | "expectedLiveloPoints"
+  | "expectedEsferaPoints"
+> {
   return {
-    id: it?.id ?? undefined,
-    type: (it?.type || "TRANSFER") as PurchaseItemType,
-    title: String(it?.title || ""),
-    details: it?.details ? String(it.details) : "",
-
-    programFrom: (it?.programFrom ?? null) as any,
-    programTo: (it?.programTo ?? null) as any,
-
-    pointsBase: clampInt(it?.pointsBase),
-    bonusMode: (it?.bonusMode ?? "") as any,
-    bonusValue:
-      it?.bonusValue === null || it?.bonusValue === undefined
-        ? 0
-        : clampInt(it?.bonusValue),
-    pointsFinal: clampInt(it?.pointsFinal),
-
-    transferMode: (it?.transferMode ?? null) as any,
-    pointsDebitedFromOrigin: clampInt(it?.pointsDebitedFromOrigin),
-
-    amountCents: clampInt(it?.amountCents),
+    expectedLatamPoints:
+      program === "LATAM" ? c.pontosLatam + deltaPts : c.pontosLatam,
+    expectedSmilesPoints:
+      program === "SMILES" ? c.pontosSmiles + deltaPts : c.pontosSmiles,
+    expectedLiveloPoints:
+      program === "LIVELO" ? c.pontosLivelo + deltaPts : c.pontosLivelo,
+    expectedEsferaPoints:
+      program === "ESFERA" ? c.pontosEsfera + deltaPts : c.pontosEsfera,
   };
 }
 
-function normalizeDraft(raw: any, cedenteSel?: Cedente | null): PurchaseDraft {
-  const items = Array.isArray(raw?.items) ? raw.items.map(normalizeItem) : [];
-
-  const d: PurchaseDraft = {
-    id: String(raw?.id || ""),
-    numero: String(raw?.numero || ""),
-    status: (raw?.status || "DRAFT") as PurchaseStatus,
-
-    cedenteId: String(raw?.cedenteId || cedenteSel?.id || ""),
-
-    ciaProgram: (raw?.ciaProgram ?? raw?.ciaAerea ?? null) as any,
-    ciaPointsTotal: clampInt(raw?.ciaPointsTotal ?? raw?.pontosCiaTotal ?? 0),
-
-    cedentePayCents: clampInt(raw?.cedentePayCents ?? 0),
-    vendorCommissionBps: clampInt(raw?.vendorCommissionBps ?? 0),
-    targetMarkupCents: clampInt(
-      raw?.targetMarkupCents ?? raw?.metaMarkupCents ?? 0
-    ),
-
-    subtotalCostCents: clampInt(
-      raw?.subtotalCostCents ?? raw?.subtotalCents ?? 0
-    ),
-    vendorCommissionCents: clampInt(
-      raw?.vendorCommissionCents ?? raw?.comissaoCents ?? 0
-    ),
-    totalCostCents: clampInt(raw?.totalCostCents ?? raw?.totalCents ?? 0),
-
-    costPerKiloCents: clampInt(
-      raw?.costPerKiloCents ?? raw?.custoMilheiroCents ?? 0
-    ),
-    targetPerKiloCents: clampInt(
-      raw?.targetPerKiloCents ?? raw?.metaMilheiroCents ?? 0
-    ),
-
-    expectedLatamPoints: raw?.expectedLatamPoints ?? raw?.saldoPrevistoLatam ?? null,
-    expectedSmilesPoints:
-      raw?.expectedSmilesPoints ?? raw?.saldoPrevistoSmiles ?? null,
-    expectedLiveloPoints:
-      raw?.expectedLiveloPoints ?? raw?.saldoPrevistoLivelo ?? null,
-    expectedEsferaPoints:
-      raw?.expectedEsferaPoints ?? raw?.saldoPrevistoEsfera ?? null,
-
-    note: raw?.note ?? raw?.observacao ?? null,
-
-    items,
+function mapItemToApi(it: PurchaseItem) {
+  return {
+    type: it.type,
+    title: it.title,
+    details: it.details ?? null,
+    programFrom: it.programFrom ?? null,
+    programTo: it.programTo ?? null,
+    pointsBase: it.pointsBase,
+    bonusMode: it.bonusMode ?? null,
+    bonusValue: it.bonusValue ?? null,
+    pointsFinal: it.pointsFinal,
+    transferMode: null,
+    pointsDebitedFromOrigin: it.pointsDebitedFromOrigin,
+    amountCents: it.amountCents,
   };
-
-  // defaults pelo cedente (se tiver)
-  if (cedenteSel) {
-    if (d.expectedLatamPoints === null || d.expectedLatamPoints === undefined)
-      d.expectedLatamPoints = cedenteSel.pontosLatam ?? 0;
-    if (d.expectedSmilesPoints === null || d.expectedSmilesPoints === undefined)
-      d.expectedSmilesPoints = cedenteSel.pontosSmiles ?? 0;
-    if (d.expectedLiveloPoints === null || d.expectedLiveloPoints === undefined)
-      d.expectedLiveloPoints = cedenteSel.pontosLivelo ?? 0;
-    if (d.expectedEsferaPoints === null || d.expectedEsferaPoints === undefined)
-      d.expectedEsferaPoints = cedenteSel.pontosEsfera ?? 0;
-  }
-
-  return d;
 }
 
 export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }) {
-  // ✅ pega /.../[id] quando existir (e mantém compatível com prop purchaseId)
   const params = useParams() as Record<string, string | string[] | undefined>;
   const routeIdRaw = params?.id;
   const routeId = Array.isArray(routeIdRaw) ? routeIdRaw[0] : routeIdRaw;
   const purchaseIdFinal = purchaseId || routeId;
-
   const router = useRouter();
-  const [cedenteSel, setCedenteSel] = useState<Cedente | null>(null);
 
+  const [query, setQuery] = useState("");
+  const [allCedentes, setAllCedentes] = useState<Cedente[]>([]);
+  const [cedenteSel, setCedenteSel] = useState<Cedente | null>(null);
+  const [loadingCed, setLoadingCed] = useState(false);
+
+  const [program, setProgram] = useState<LoyaltyProgram | "">("");
+  const [tipo, setTipo] = useState<"PONTOS" | "CLUBE">("PONTOS");
+
+  const [pointsBase, setPointsBase] = useState(0);
+  const [bonusMode, setBonusMode] = useState<"" | "PERCENT" | "TOTAL">("");
+  const [bonusValue, setBonusValue] = useState(0);
+  const [valorReais, setValorReais] = useState("");
+
+  const [tierK, setTierK] = useState(10);
+  const [clubPriceReais, setClubPriceReais] = useState("");
+  const [renewalDay, setRenewalDay] = useState(10);
+  const [startDateISO, setStartDateISO] = useState(isoToday());
+  const [clubBonusPts, setClubBonusPts] = useState(0);
+  const [clubRecurrent, setClubRecurrent] = useState(true);
+  const [clubBilling, setClubBilling] = useState<"MONTHLY" | "ANNUAL">("MONTHLY");
+
+  const [note, setNote] = useState("");
   const [draft, setDraft] = useState<PurchaseDraft | null>(null);
+  const [multiItemWarning, setMultiItemWarning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const saveTimer = useRef<number | null>(null);
 
-  const [itemsAllowManualFinal, setItemsAllowManualFinal] = useState<
-    Record<string, boolean>
-  >({});
-  const [expectedAuto, setExpectedAuto] = useState<
-    Record<LoyaltyProgram, boolean>
-  >({
-    LATAM: true,
-    SMILES: true,
-    LIVELO: true,
-    ESFERA: true,
-  });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoadingCed(true);
+      try {
+        const out = await api<{ ok: true; data: Cedente[] }>("/api/cedentes/approved");
+        if (!alive) return;
+        setAllCedentes(Array.isArray(out?.data) ? out.data : []);
+      } catch {
+        if (alive) setAllCedentes([]);
+      } finally {
+        if (alive) setLoadingCed(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  // ===== load compra existente (modo edição)
   useEffect(() => {
     if (!purchaseIdFinal) return;
-
     (async () => {
       try {
         setSaving(true);
-
-        const out = await api<{ compra: any; cedente: Cedente }>(
+        const out = await api<{ compra: Record<string, unknown>; cedente: Cedente }>(
           `/api/compras/${purchaseIdFinal}`
         );
-
         setCedenteSel(out.cedente);
+        const raw = out.compra;
+        const items = (Array.isArray(raw.items) ? raw.items : []) as PurchaseItem[];
+        setMultiItemWarning(items.length > 1);
+        const p0 = String(raw.ciaProgram || raw.ciaAerea || "");
+        if (p0 === "LATAM" || p0 === "SMILES" || p0 === "LIVELO" || p0 === "ESFERA") {
+          setProgram(p0);
+        }
+        setDraft({
+          id: String(raw.id || ""),
+          numero: String(raw.numero || ""),
+          status: String(raw.status || "OPEN"),
+          cedenteId: String(raw.cedenteId || ""),
+          ciaProgram: (raw.ciaProgram || raw.ciaAerea || null) as LoyaltyProgram | null,
+          ciaPointsTotal: clampInt(raw.ciaPointsTotal ?? raw.pontosCiaTotal ?? 0),
+          note: (raw.note as string) ?? (raw.observacao as string) ?? null,
+          items,
+          expectedLatamPoints: (raw.expectedLatamPoints ?? raw.saldoPrevistoLatam) as number | null,
+          expectedSmilesPoints: (raw.expectedSmilesPoints ?? raw.saldoPrevistoSmiles) as number | null,
+          expectedLiveloPoints: (raw.expectedLiveloPoints ?? raw.saldoPrevistoLivelo) as number | null,
+          expectedEsferaPoints: (raw.expectedEsferaPoints ?? raw.saldoPrevistoEsfera) as number | null,
+          totalCostCents: clampInt(raw.totalCostCents ?? raw.totalCents ?? 0),
+          costPerKiloCents: clampInt(raw.costPerKiloCents ?? raw.custoMilheiroCents ?? 0),
+        });
+        setNote(String((raw.note as string) || (raw.observacao as string) || ""));
 
-        const p = normalizeDraft(out.compra, out.cedente);
-        const totals = computeTotals(p);
-
-        setDraft({ ...p, ...totals });
-      } catch (e: any) {
-        setError(e?.message || "Falha ao carregar compra.");
+        const first = items[0];
+        if (first?.type === "POINTS_BUY") {
+          setTipo("PONTOS");
+          setPointsBase(clampInt(first.pointsBase));
+          setBonusMode((first.bonusMode as "" | "PERCENT" | "TOTAL") || "");
+          setBonusValue(clampInt(first.bonusValue ?? 0));
+          setValorReais(String((clampInt(first.amountCents) || 0) / 100));
+        } else if (first?.type === "CLUB") {
+          setTipo("CLUBE");
+          try {
+            const m = JSON.parse(String(first.details || "{}")) as ClubMeta;
+            setTierK(clampInt(m.tierK) || 10);
+            setClubPriceReais(String((clampInt(m.priceCents) || 0) / 100));
+            setRenewalDay(clampDay(m.renewalDay));
+            setStartDateISO(m.startDateISO || isoToday());
+            setClubBonusPts(Math.max(0, clampInt(m.bonusPoints)));
+            setClubRecurrent(m.isRecurrent !== false);
+            setClubBilling(m.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY");
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Falha ao carregar compra.");
       } finally {
         setSaving(false);
       }
     })();
   }, [purchaseIdFinal]);
 
-  // ===== /compras/nova: cria compra no estoque operacional (sem escolher cedente)
-  useEffect(() => {
-    if (purchaseIdFinal) return;
+  const cedentes = useMemo(() => {
+    const s = norm(query);
+    if (s.length < 2) return [];
+    const dig = onlyDigits(query);
+    return allCedentes
+      .filter((c) => {
+        const nome = norm(c.nomeCompleto);
+        const ident = norm(c.identificador);
+        const cpfDig = onlyDigits(c.cpf);
+        if (dig.length >= 2) {
+          return (
+            cpfDig.includes(dig) ||
+            onlyDigits(c.identificador).includes(dig) ||
+            nome.includes(s) ||
+            ident.includes(s)
+          );
+        }
+        return nome.includes(s) || ident.includes(s) || cpfDig.includes(s);
+      })
+      .slice(0, 30);
+  }, [allCedentes, query]);
 
-    let cancelled = false;
+  const itemPreview = useMemo((): PurchaseItem | null => {
+    if (!cedenteSel || !program) return null;
+    const amountCents = roundCents(Number(valorReais.replace(",", ".") || 0) * 100);
 
-    (async () => {
-      try {
-        setSaving(true);
-        setError(null);
-        const out = await api<{ compra: { id: string } }>(`/api/compras`, {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
-        const id = out?.compra?.id;
-        if (!id) throw new Error("Resposta inválida ao criar compra.");
-        if (!cancelled) router.replace(`/dashboard/compras/${id}`);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Falha ao abrir compra.");
-      } finally {
-        if (!cancelled) setSaving(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    };
-  }, [purchaseIdFinal, router]);
-
-  function scheduleAutosave(next: PurchaseDraft) {
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      void saveDraft(next);
-    }, 650);
-  }
-
-  async function saveDraft(nextDraft?: PurchaseDraft, silent?: boolean) {
-    const d0 = nextDraft || draft;
-    if (!d0) return;
-
-    const d = normalizeDraft(d0, cedenteSel);
-
-    setError(null);
-    if (!silent) setSaving(true);
-
-    try {
-      const totals = computeTotals(d);
-      const payload = { ...d, ...totals };
-
-      setDraft(payload);
-
-      await api<{ ok: true }>(`/api/compras/${d.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          ciaProgram: payload.ciaProgram,
-          ciaPointsTotal: payload.ciaPointsTotal,
-
-          cedentePayCents: payload.cedentePayCents,
-          vendorCommissionBps: payload.vendorCommissionBps,
-          targetMarkupCents: payload.targetMarkupCents,
-
-          note: payload.note,
-
-          expectedLatamPoints: payload.expectedLatamPoints,
-          expectedSmilesPoints: payload.expectedSmilesPoints,
-          expectedLiveloPoints: payload.expectedLiveloPoints,
-          expectedEsferaPoints: payload.expectedEsferaPoints,
-
-          items: payload.items,
-
-          subtotalCostCents: payload.subtotalCostCents,
-          vendorCommissionCents: payload.vendorCommissionCents,
-          totalCostCents: payload.totalCostCents,
-          costPerKiloCents: payload.costPerKiloCents,
-          targetPerKiloCents: payload.targetPerKiloCents,
-        }),
+    if (tipo === "PONTOS") {
+      const pf = calcItemPointsFinal({
+        pointsBase,
+        bonusMode: bonusMode || null,
+        bonusValue,
       });
-    } catch (e: any) {
-      setError(e?.message || "Falha ao salvar.");
-    } finally {
-      if (!silent) setSaving(false);
+      return {
+        type: "POINTS_BUY",
+        title: `Compra ${PROGRAM_LABEL[program]}`,
+        programTo: program,
+        programFrom: null,
+        pointsBase,
+        bonusMode: bonusMode || null,
+        bonusValue,
+        pointsFinal: pf,
+        pointsDebitedFromOrigin: 0,
+        amountCents,
+      };
     }
-  }
 
-  async function releasePurchase() {
-    if (!draft) return;
+    const priceCents = roundCents(Number(clubPriceReais.replace(",", ".") || 0) * 100);
+    const meta: ClubMeta = {
+      program: program as LoyaltyProgram,
+      tierK,
+      priceCents,
+      renewalDay: clampDay(renewalDay),
+      startDateISO,
+      bonusPoints: clubBonusPts,
+      isRecurrent: clubRecurrent,
+      billingCycle: clubBilling,
+    };
+    const base = tierK * 1000;
+    const pf = base + Math.max(0, clubBonusPts);
+    return {
+      type: "CLUB",
+      title: `Clube ${PROGRAM_LABEL[program as LoyaltyProgram]} ${tierK}k`,
+      details: JSON.stringify(meta),
+      programTo: program as LoyaltyProgram,
+      programFrom: null,
+      pointsBase: base,
+      bonusMode: "TOTAL",
+      bonusValue: clubBonusPts,
+      pointsFinal: pf,
+      pointsDebitedFromOrigin: 0,
+      amountCents: priceCents,
+    };
+  }, [
+    cedenteSel,
+    program,
+    tipo,
+    pointsBase,
+    bonusMode,
+    bonusValue,
+    valorReais,
+    tierK,
+    clubPriceReais,
+    renewalDay,
+    startDateISO,
+    clubBonusPts,
+    clubRecurrent,
+    clubBilling,
+  ]);
+
+  const expectedPreview = useMemo(() => {
+    if (!cedenteSel || !program || !itemPreview) return null;
+    return buildExpected(cedenteSel, program as LoyaltyProgram, itemPreview.pointsFinal);
+  }, [cedenteSel, program, itemPreview]);
+
+  const milheiroEstimado = useMemo(() => {
+    if (!itemPreview || itemPreview.pointsFinal <= 0) return 0;
+    return Math.round((itemPreview.amountCents * 1000) / itemPreview.pointsFinal);
+  }, [itemPreview]);
+
+  async function criarRascunho() {
+    if (!cedenteSel || !program) {
+      setError("Selecione cedente e programa.");
+      return;
+    }
     setError(null);
     setSaving(true);
-
     try {
-      await saveDraft(draft, true);
-
-      const out = await api<{ ok: true; compra: any }>(
-        `/api/compras/${draft.id}/liberar`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            saldosAplicados: {
-              latam: draft.expectedLatamPoints ?? undefined,
-              smiles: draft.expectedSmilesPoints ?? undefined,
-              livelo: draft.expectedLiveloPoints ?? undefined,
-              esfera: draft.expectedEsferaPoints ?? undefined,
-            },
-          }),
-        }
-      );
-
-      const p2 = normalizeDraft(out.compra, cedenteSel);
-      const totals2 = computeTotals(p2);
-
-      setDraft({ ...p2, ...totals2 });
-    } catch (e: any) {
-      setError(e?.message || "Falha ao liberar.");
+      const out = await api<{ compra: { id: string } }>("/api/compras", {
+        method: "POST",
+        body: JSON.stringify({
+          cedenteId: cedenteSel.id,
+          ciaProgram: program,
+          note: note.trim() || null,
+        }),
+      });
+      const id = out?.compra?.id;
+      if (!id) throw new Error("Resposta inválida.");
+      router.replace(`/dashboard/compras/${id}`);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Falha ao criar.");
     } finally {
       setSaving(false);
     }
   }
 
-  const isReleased = draft?.status === "CLOSED";
-
-  const totals = useMemo(() => {
-    if (!draft) return null;
-    return computeTotals(draft);
-  }, [draft]);
-
-  function updateDraft(patch: Partial<PurchaseDraft>) {
-    if (!draft) return;
-    const next = normalizeDraft({ ...draft, ...patch }, cedenteSel);
-    const t = computeTotals(next);
-    const merged = { ...next, ...t };
-    setDraft(merged);
-    scheduleAutosave(merged);
-  }
-
-  const clubItems = useMemo(() => {
-    if (!draft) return [];
-    const arr = Array.isArray(draft.items) ? draft.items : [];
-    return arr.filter((i) => i.type === "CLUB");
-  }, [draft]);
-
-  const otherItems = useMemo(() => {
-    if (!draft) return [];
-    const arr = Array.isArray(draft.items) ? draft.items : [];
-    return arr.filter((i) => i.type !== "CLUB");
-  }, [draft]);
-
-  function makeKey(it: PurchaseItem, idx: number) {
-    return it.id || `idx_${idx}`;
-  }
-
-  function addTransferItem() {
-    if (!draft) return;
-
-    const nextItem: PurchaseItem = {
-      type: "TRANSFER",
-      title: "Transferência",
-      details: "",
-      programFrom: "LIVELO",
-      programTo: "SMILES",
-      pointsBase: 0,
-      bonusMode: "PERCENT",
-      bonusValue: 0,
-      pointsFinal: 0,
-      transferMode: "FULL_POINTS",
-      pointsDebitedFromOrigin: 0,
-      amountCents: 0,
-    };
-
-    updateDraft({ items: [...(draft.items ?? []), nextItem] });
-  }
-
-  function addClub() {
-    if (!draft) return;
-
-    const meta: ClubMeta = {
-      program: "LIVELO",
-      tierK: 10,
-      priceCents: 0,
-      renewalDay: new Date().getDate(),
-      startDateISO: isoToday(),
-      bonusPoints: 0,
-      isRecurrent: true,
-      billingCycle: "MONTHLY",
-    };
-
-    const item: PurchaseItem = {
-      type: "CLUB",
-      title: `Clube ${PROGRAM_LABEL[meta.program]} ${meta.tierK}k`,
-      details: JSON.stringify(meta),
-      programFrom: null,
-      programTo: meta.program,
-      pointsBase: meta.tierK * 1000,
-      bonusMode: "TOTAL",
-      bonusValue: meta.bonusPoints,
-      pointsFinal: meta.tierK * 1000 + Math.max(0, clampInt(meta.bonusPoints)),
-      transferMode: null,
-      pointsDebitedFromOrigin: 0,
-      amountCents: meta.priceCents,
-    };
-
-    updateDraft({ items: [...(draft.items ?? []), item] });
-  }
-
-  function removeItemByIndex(realIdx: number) {
-    if (!draft) return;
-    const items = [...(draft.items ?? [])];
-    items.splice(realIdx, 1);
-    updateDraft({ items });
-  }
-
-  function updateItem(realIdx: number, patch: Partial<PurchaseItem>) {
-    if (!draft) return;
-
-    const items = [...(draft.items ?? [])];
-    const cur = items[realIdx] || normalizeItem({});
-    const merged: PurchaseItem = normalizeItem({ ...cur, ...patch });
-
-    const canAuto =
-      merged.type === "TRANSFER" ||
-      merged.type === "POINTS_BUY" ||
-      merged.type === "ADJUSTMENT" ||
-      merged.type === "CLUB";
-
-    const key = merged.id || `idx_${realIdx}`;
-    const allowManual = !!itemsAllowManualFinal[key];
-
-    if (canAuto && !allowManual) {
-      merged.pointsFinal = calcItemPointsFinal(merged);
+  async function saveDraft(silent?: boolean): Promise<boolean> {
+    if (!draft?.id || !cedenteSel || !itemPreview || !program || !expectedPreview)
+      return false;
+    if (itemPreview.pointsFinal <= 0) return false;
+    if (tipo === "PONTOS" && itemPreview.amountCents <= 0) return false;
+    if (tipo === "CLUBE" && itemPreview.amountCents < 0) return false;
+    if (!silent) setSaving(true);
+    setError(null);
+    try {
+      const items = [mapItemToApi(itemPreview)];
+      const payload = {
+        ciaProgram: program,
+        ciaPointsTotal: itemPreview.pointsFinal,
+        note: note.trim() || null,
+        expectedLatamPoints: expectedPreview.expectedLatamPoints,
+        expectedSmilesPoints: expectedPreview.expectedSmilesPoints,
+        expectedLiveloPoints: expectedPreview.expectedLiveloPoints,
+        expectedEsferaPoints: expectedPreview.expectedEsferaPoints,
+        items,
+      };
+      const out = await api<{ compra: Record<string, unknown>; cedente: Cedente }>(
+        `/api/compras/${draft.id}`,
+        { method: "PATCH", body: JSON.stringify(payload) }
+      );
+      const raw = out.compra;
+      setCedenteSel(out.cedente);
+      setDraft({
+        id: String(raw.id || draft.id),
+        numero: String(raw.numero || ""),
+        status: String(raw.status || "OPEN"),
+        cedenteId: String(raw.cedenteId || ""),
+        ciaProgram: (raw.ciaProgram || program) as LoyaltyProgram,
+        ciaPointsTotal: clampInt(raw.ciaPointsTotal ?? itemPreview.pointsFinal),
+        note: (raw.note as string) ?? note,
+        items: (raw.items as PurchaseItem[]) || items,
+        expectedLatamPoints: expectedPreview.expectedLatamPoints,
+        expectedSmilesPoints: expectedPreview.expectedSmilesPoints,
+        expectedLiveloPoints: expectedPreview.expectedLiveloPoints,
+        expectedEsferaPoints: expectedPreview.expectedEsferaPoints,
+        totalCostCents: clampInt(raw.totalCostCents ?? raw.totalCents ?? itemPreview.amountCents),
+        costPerKiloCents: clampInt(raw.costPerKiloCents ?? raw.custoMilheiroCents ?? milheiroEstimado),
+      });
+      return true;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Falha ao salvar.");
+      return false;
+    } finally {
+      if (!silent) setSaving(false);
     }
+  }
 
-    if (merged.type === "CLUB") {
-      const meta = safeJsonParse<ClubMeta>(merged.details) || null;
-      if (meta) {
-        const bonusPoints = Math.max(0, clampInt(meta.bonusPoints ?? 0));
-        const pointsBase = Math.max(0, clampInt(meta.tierK) * 1000);
-        merged.title = `Clube ${PROGRAM_LABEL[meta.program]} ${meta.tierK}k`;
-        merged.programTo = meta.program;
-        merged.pointsBase = pointsBase;
-        merged.bonusMode = "TOTAL";
-        merged.bonusValue = bonusPoints;
-        merged.pointsFinal = allowManual
-          ? merged.pointsFinal
-          : calcItemPointsFinal({
-              ...merged,
-              pointsBase,
-              bonusMode: "TOTAL",
-              bonusValue: bonusPoints,
-            });
-        merged.amountCents = meta.priceCents;
+  async function liberar() {
+    if (!draft?.id || !expectedPreview || !program) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await saveDraft(true);
+      if (!saved) {
+        setError("Preencha pontos e valores antes de liberar.");
+        return;
       }
+      await api(`/api/compras/${draft.id}/liberar`, {
+        method: "POST",
+        body: JSON.stringify({
+          saldosAplicados: {
+            latam: expectedPreview.expectedLatamPoints ?? undefined,
+            smiles: expectedPreview.expectedSmilesPoints ?? undefined,
+            livelo: expectedPreview.expectedLiveloPoints ?? undefined,
+            esfera: expectedPreview.expectedEsferaPoints ?? undefined,
+          },
+        }),
+      });
+      router.push("/dashboard/compras");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Falha ao liberar.");
+    } finally {
+      setSaving(false);
     }
-
-    items[realIdx] = merged;
-    updateDraft({ items });
   }
 
-  // Auto: ciaPointsTotal = soma itens programTo=CIA (se estiver 0)
-  useEffect(() => {
-    if (!draft || !draft.ciaProgram || isReleased) return;
-    if ((draft.ciaPointsTotal || 0) > 0) return;
+  const isClosed = draft?.status === "CLOSED";
+  const canLiberar =
+    !!draft?.id &&
+    !isClosed &&
+    !!itemPreview &&
+    itemPreview.pointsFinal > 0 &&
+    (tipo === "CLUBE" ? itemPreview.amountCents >= 0 : itemPreview.amountCents > 0) &&
+    !!program;
 
-    const itemsArr = Array.isArray(draft.items) ? draft.items : [];
-    const sum = itemsArr
-      .filter((it) => it.programTo === draft.ciaProgram)
-      .reduce((acc, it) => acc + (it.pointsFinal || 0), 0);
-
-    if (sum > 0) updateDraft({ ciaPointsTotal: sum });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.ciaProgram, draft?.items, isReleased]);
-
-  const computedExpected = useMemo(() => {
-    if (!cedenteSel || !draft) return null;
-
-    const deltas = computeProgramDeltas(draft.items ?? []);
-
-    return {
-      LATAM: (cedenteSel.pontosLatam || 0) + deltas.LATAM,
-      SMILES: (cedenteSel.pontosSmiles || 0) + deltas.SMILES,
-      LIVELO: (cedenteSel.pontosLivelo || 0) + deltas.LIVELO,
-      ESFERA: (cedenteSel.pontosEsfera || 0) + deltas.ESFERA,
-      deltas,
-    };
-  }, [cedenteSel, draft]);
-
-  useEffect(() => {
-    if (!draft || !cedenteSel || !computedExpected || isReleased) return;
-
-    const patch: Partial<PurchaseDraft> = {};
-
-    if (expectedAuto.LATAM) patch.expectedLatamPoints = computedExpected.LATAM;
-    if (expectedAuto.SMILES) patch.expectedSmilesPoints = computedExpected.SMILES;
-    if (expectedAuto.LIVELO) patch.expectedLiveloPoints = computedExpected.LIVELO;
-    if (expectedAuto.ESFERA) patch.expectedEsferaPoints = computedExpected.ESFERA;
-
-    const changed =
-      (expectedAuto.LATAM &&
-        draft.expectedLatamPoints !== patch.expectedLatamPoints) ||
-      (expectedAuto.SMILES &&
-        draft.expectedSmilesPoints !== patch.expectedSmilesPoints) ||
-      (expectedAuto.LIVELO &&
-        draft.expectedLiveloPoints !== patch.expectedLiveloPoints) ||
-      (expectedAuto.ESFERA &&
-        draft.expectedEsferaPoints !== patch.expectedEsferaPoints);
-
-    if (changed) updateDraft(patch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [computedExpected, expectedAuto, isReleased]);
-
-  if (!purchaseIdFinal) {
+  if (purchaseIdFinal && !draft && !error) {
     return (
-      <div className="grid min-h-[40vh] place-items-center px-4">
-        <div className="text-center text-sm text-gray-600 space-y-2">
-          {error ? (
-            <>
-              <p className="text-red-600">{error}</p>
-              <button
-                type="button"
-                className="text-blue-600 underline"
-                onClick={() => window.location.reload()}
-              >
-                Tentar novamente
-              </button>
-            </>
-          ) : (
-            <p>Abrindo nova compra…</p>
-          )}
-        </div>
+      <div className="grid min-h-[30vh] place-items-center text-sm text-gray-600">
+        Carregando…
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-6 max-w-4xl">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Nova compra</h1>
+          <h1 className="text-xl font-semibold">Efetuar compra</h1>
           <p className="text-sm text-gray-600">
-            Pontos, clubes e transferências entram no <b>estoque operacional</b> do
-            time — sem escolher CPF de cedente. Rascunho; ao <b>LIBERAR</b>, o saldo é
-            aplicado.
+            Uma compra por <b>programa</b> e <b>cedente</b>: pontos adquiridos ou assinatura de
+            clube. Sem taxas extras — o milheiro vem do custo ÷ pontos.
           </p>
-
           {draft && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
-              <span className="rounded-full border px-2 py-1">
-                Compra: <span className="font-mono">{draft.numero}</span>
-              </span>
-
-              <span
-                className={`rounded-full border px-2 py-1 ${
-                  draft.status === "CLOSED"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                    : "bg-gray-50"
-                }`}
-              >
-                Status: <span className="font-mono">{draft.status}</span>
-              </span>
-
-              <span className="rounded-full border px-2 py-1">
-                Autosave: {saving ? "salvando…" : "ativo"}
-              </span>
+            <div className="mt-2 text-xs text-gray-500">
+              {isClosed ? (
+                <span className="text-emerald-700 font-medium">Liberada</span>
+              ) : (
+                <>
+                  Rascunho · atualizado automaticamente · programa{" "}
+                  <b>{draft.ciaProgram ? PROGRAM_LABEL[draft.ciaProgram] : "—"}</b>
+                </>
+              )}
             </div>
           )}
         </div>
-
-        {draft && (
-          <DraftActions
-            draft={draft}
-            saving={saving}
-            isReleased={!!isReleased}
-            onSave={() => void saveDraft(draft)}
-            onRelease={releasePurchase}
-          />
+        {draft && !isClosed && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void saveDraft()}
+              disabled={saving}
+              className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            >
+              Salvar agora
+            </button>
+            <button
+              type="button"
+              onClick={() => void liberar()}
+              disabled={!canLiberar || saving}
+              className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+            >
+              Liberar (aplicar saldo)
+            </button>
+          </div>
         )}
       </div>
 
@@ -781,1005 +586,318 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         </div>
       )}
 
-      {draft && cedenteSel && isOperationalHouseCedente(cedenteSel) && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-          Lançamento no estoque: <span className="font-medium">{cedenteSel.nomeCompleto}</span> ·{" "}
-          <span className="font-mono">{cedenteSel.identificador}</span>
+      {multiItemWarning && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Esta compra tem mais de um lançamento. Ao <b>Salvar</b>, tudo será substituído por{" "}
+          <b>um único</b> item conforme o formulário abaixo.
         </div>
       )}
 
-      {/* 1) Config + Resumo */}
-      {draft && (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2 rounded-xl border p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-medium">1) Configuração</h2>
-              <div className="text-xs text-gray-500">
-                Ajustes gerais da compra (comissão, taxa, etc.)
-              </div>
+      {/* Cedente */}
+      <div className="rounded-xl border p-4 space-y-3">
+        <h2 className="font-medium">Cedente</h2>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          disabled={!!draft?.id && isClosed}
+          className="w-full rounded-md border px-3 py-2 text-sm"
+          placeholder="Buscar nome, CPF ou identificador…"
+        />
+        {loadingCed && <div className="text-xs text-gray-500">Carregando…</div>}
+        {!draft?.id && query.trim().length >= 2 && cedentes.length > 0 && (
+          <div className="max-h-48 overflow-auto rounded-md border">
+            {cedentes.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCedenteSel(c)}
+                className={`flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                  cedenteSel?.id === c.id ? "bg-gray-50" : ""
+                }`}
+              >
+                <span className="font-medium">{c.nomeCompleto}</span>
+                <span className="text-xs text-gray-500">
+                  {c.identificador} · CPF {c.cpf}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {cedenteSel && (
+          <div className="rounded-lg bg-gray-50 p-3 text-sm">
+            <div className="font-medium">{cedenteSel.nomeCompleto}</div>
+            <div className="text-xs text-gray-600 mt-1">
+              LATAM {cedenteSel.pontosLatam.toLocaleString("pt-BR")} · SMILES{" "}
+              {cedenteSel.pontosSmiles.toLocaleString("pt-BR")} · LIVELO{" "}
+              {cedenteSel.pontosLivelo.toLocaleString("pt-BR")} · ESFERA{" "}
+              {cedenteSel.pontosEsfera.toLocaleString("pt-BR")}
             </div>
+          </div>
+        )}
+      </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="md:col-span-3">
-                <label className="text-sm text-gray-600">Observação</label>
+      {/* Programa + tipo */}
+      <div className="rounded-xl border p-4 space-y-4">
+        <h2 className="font-medium">Programa e tipo</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm">
+            <span className="text-gray-600">Programa (destino dos pontos)</span>
+            <select
+              value={program}
+              onChange={(e) => setProgram(e.target.value as LoyaltyProgram | "")}
+              disabled={!!draft?.id || isClosed}
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+            >
+              <option value="">Selecione…</option>
+              {(Object.keys(PROGRAM_LABEL) as LoyaltyProgram[]).map((p) => (
+                <option key={p} value={p}>
+                  {PROGRAM_LABEL[p]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="text-sm">
+            <span className="text-gray-600">Tipo</span>
+            <div className="mt-2 flex gap-4">
+              <label className="flex items-center gap-2">
                 <input
-                  value={draft.note || ""}
-                  disabled={!!isReleased}
-                  onChange={(e) => updateDraft({ note: e.target.value })}
-                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  placeholder="Opcional"
+                  type="radio"
+                  name="tipo"
+                  checked={tipo === "PONTOS"}
+                  disabled={!!draft?.id || isClosed}
+                  onChange={() => setTipo("PONTOS")}
                 />
-              </div>
+                Compra de pontos
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="tipo"
+                  checked={tipo === "CLUBE"}
+                  disabled={!!draft?.id || isClosed}
+                  onChange={() => setTipo("CLUBE")}
+                />
+                Clube
+              </label>
             </div>
+          </div>
+        </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <div>
-                <label className="text-sm text-gray-600">
-                  Taxa cedente (R$)
-                </label>
-                <input
-                  type="number"
-                  value={draft.cedentePayCents / 100}
-                  disabled={!!isReleased}
-                  onChange={(e) =>
-                    updateDraft({
-                      cedentePayCents: roundCents(
-                        Number(e.target.value || 0) * 100
-                      ),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                />
-              </div>
+        {!draft?.id && cedenteSel && program && (
+          <button
+            type="button"
+            onClick={() => void criarRascunho()}
+            disabled={saving}
+            className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            Criar rascunho de compra
+          </button>
+        )}
+      </div>
 
-              <div>
-                <label className="text-sm text-gray-600">
-                  Comissão vendedor (%)
+      {draft?.id && !isClosed && (
+        <>
+          <div className="rounded-xl border p-4 space-y-4">
+            <h2 className="font-medium">Valores</h2>
+            {tipo === "PONTOS" ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="text-sm">
+                  <span className="text-gray-600">Pontos base</span>
+                  <input
+                    type="number"
+                    value={pointsBase || ""}
+                    onChange={(e) => setPointsBase(clampInt(e.target.value))}
+                    className="mt-1 w-full rounded-md border px-3 py-2 font-mono text-sm"
+                  />
                 </label>
-                <input
-                  type="number"
-                  value={draft.vendorCommissionBps / 100}
-                  disabled={!!isReleased}
-                  onChange={(e) =>
-                    updateDraft({
-                      vendorCommissionBps: roundCents(
-                        Number(e.target.value || 0) * 100
-                      ),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  placeholder="1 = 1%"
-                />
-                <div className="mt-1 text-xs text-gray-500">
-                  Interno em bps. Use 1 para 1%.
+                <label className="text-sm">
+                  <span className="text-gray-600">Valor pago (R$)</span>
+                  <input
+                    value={valorReais}
+                    onChange={(e) => setValorReais(e.target.value)}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    placeholder="0,00"
+                  />
+                </label>
+                <div className="md:col-span-2 grid gap-2 md:grid-cols-2">
+                  <label className="text-sm">
+                    <span className="text-gray-600">Bônus</span>
+                    <select
+                      value={bonusMode}
+                      onChange={(e) =>
+                        setBonusMode(e.target.value as "" | "PERCENT" | "TOTAL")
+                      }
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    >
+                      <option value="">Nenhum</option>
+                      <option value="PERCENT">Percentual sobre a base</option>
+                      <option value="TOTAL">Pontos fixos extras</option>
+                    </select>
+                  </label>
+                  {bonusMode ? (
+                    <label className="text-sm">
+                      <span className="text-gray-600">
+                        {bonusMode === "PERCENT" ? "Percentual (%)" : "Pontos extras"}
+                      </span>
+                      <input
+                        type="number"
+                        value={bonusValue || ""}
+                        onChange={(e) => setBonusValue(clampInt(e.target.value))}
+                        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                      />
+                    </label>
+                  ) : null}
                 </div>
               </div>
-
-              <div>
-                <label className="text-sm text-gray-600">
-                  Markup meta (R$/milheiro)
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="text-sm">
+                  <span className="text-gray-600">Pacote (mil pontos)</span>
+                  <select
+                    value={tierK}
+                    onChange={(e) => setTierK(clampInt(e.target.value))}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  >
+                    {CLUB_TIERS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}k / mês
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <input
-                  type="number"
-                  value={draft.targetMarkupCents / 100}
-                  disabled={!!isReleased}
-                  onChange={(e) =>
-                    updateDraft({
-                      targetMarkupCents: roundCents(
-                        Number(e.target.value || 0) * 100
-                      ),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  placeholder="1.50"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border p-4 lg:sticky lg:top-4 h-fit space-y-3">
-            <div className="text-sm font-medium">Resumo</div>
-
-            <div className="rounded-lg bg-gray-50 p-3 text-sm space-y-1">
-              <Row
-                label="Subtotal"
-                value={fmtMoneyBR(totals?.subtotalCostCents || 0)}
-              />
-              <Row
-                label="Comissão"
-                value={fmtMoneyBR(totals?.vendorCommissionCents || 0)}
-              />
-              <div className="h-px bg-gray-200 my-2" />
-              <Row
-                label="Total"
-                value={fmtMoneyBR(totals?.totalCostCents || 0)}
-                bold
-              />
-              <div className="h-px bg-gray-200 my-2" />
-              <Row
-                label="Milheiro"
-                value={fmtMoneyBR(totals?.costPerKiloCents || 0)}
-                bold
-              />
-              <Row
-                label="Meta"
-                value={fmtMoneyBR(totals?.targetPerKiloCents || 0)}
-                bold
-              />
-            </div>
-
-            <div className="text-xs text-gray-500">
-              Dica: selecione a CIA na etapa 5. O milheiro usa o <b>Esperado</b>{" "}
-              da CIA.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3) Clubes */}
-      {draft && (
-        <div className="rounded-xl border p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium">2) Clubes (assinaturas)</h2>
-
-            <button
-              type="button"
-              onClick={addClub}
-              disabled={!!isReleased}
-              className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
-            >
-              + Adicionar clube
-            </button>
-          </div>
-
-          {clubItems.length === 0 && (
-            <div className="text-sm text-gray-600">
-              Nenhum clube adicionado.
-            </div>
-          )}
-
-          {clubItems.length > 0 && (
-            <div className="overflow-auto rounded-lg border">
-              <table className="min-w-[1100px] w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr className="text-left">
-                    <th className="p-2">Programa</th>
-                    <th className="p-2">Tipo</th>
-                    <th className="p-2">Valor (R$)</th>
-                    <th className="p-2">Recorrente</th>
-                    <th className="p-2">Ciclo</th>
-                    <th className="p-2">Milheiro est.</th>
-                    <th className="p-2">Renova (dia)</th>
-                    <th className="p-2">Data assinatura</th>
-                    <th className="p-2">Base pts/mês</th>
-                    <th className="p-2">Bônus (milhas)</th>
-                    <th className="p-2">Total pts/mês</th>
-                    <th className="p-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(draft.items ?? []).map((it, realIdx) => {
-                    if (it.type !== "CLUB") return null;
-
-                    const bonusFromItem =
-                      (it.bonusMode === "TOTAL" ? clampInt(it.bonusValue || 0) : 0) || 0;
-
-                    const parsedMeta = safeJsonParse<ClubMeta>(it.details);
-                    const meta = parsedMeta
-                      ? {
-                          ...parsedMeta,
-                          isRecurrent: parsedMeta.isRecurrent !== false,
-                          billingCycle: parsedMeta.billingCycle || "MONTHLY",
-                          bonusPoints: Math.max(
-                            0,
-                            clampInt(parsedMeta.bonusPoints ?? bonusFromItem)
-                          ),
-                        }
-                      : {
-                          program: (it.programTo || "LIVELO") as LoyaltyProgram,
-                          tierK:
-                            Math.max(
-                              1,
-                              Math.round((it.pointsFinal || 0) / 1000) || 10
-                            ) || 10,
-                          priceCents: it.amountCents || 0,
-                          renewalDay: new Date().getDate(),
-                          startDateISO: isoToday(),
-                          bonusPoints: Math.max(0, bonusFromItem),
-                          isRecurrent: true,
-                          billingCycle: "MONTHLY" as const,
-                        };
-                    const milheiroClubEst = clubMilheiroEstimateCents(meta);
-
-                    return (
-                      <tr key={realIdx} className="border-t">
-                        <td className="p-2">
-                          <select
-                            value={meta.program}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const next: ClubMeta = {
-                                ...meta,
-                                program: e.target.value as LoyaltyProgram,
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                                programTo: next.program,
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          >
-                            <option value="LIVELO">Livelo</option>
-                            <option value="SMILES">Smiles</option>
-                            <option value="LATAM">LATAM</option>
-                            <option value="ESFERA">Esfera</option>
-                          </select>
-                        </td>
-
-                        <td className="p-2">
-                          <select
-                            value={meta.tierK}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const next: ClubMeta = {
-                                ...meta,
-                                tierK: clampInt(e.target.value),
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                                pointsBase: next.tierK * 1000,
-                                pointsFinal: next.tierK * 1000,
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          >
-                            {CLUB_TIERS.map((k) => (
-                              <option key={k} value={k}>
-                                {k}k
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            value={(meta.priceCents || 0) / 100}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const cents = roundCents(
-                                Number(e.target.value || 0) * 100
-                              );
-                              const next: ClubMeta = {
-                                ...meta,
-                                priceCents: cents,
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                                amountCents: cents,
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          />
-                        </td>
-
-                        <td className="p-2">
-                          <select
-                            value={meta.isRecurrent !== false ? "yes" : "no"}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const rec = e.target.value === "yes";
-                              const next: ClubMeta = {
-                                ...meta,
-                                isRecurrent: rec,
-                                billingCycle: rec ? meta.billingCycle || "MONTHLY" : "MONTHLY",
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          >
-                            <option value="yes">Sim</option>
-                            <option value="no">Não</option>
-                          </select>
-                        </td>
-
-                        <td className="p-2">
-                          <select
-                            value={meta.billingCycle || "MONTHLY"}
-                            disabled={!!isReleased || meta.isRecurrent === false}
-                            onChange={(e) => {
-                              const next: ClubMeta = {
-                                ...meta,
-                                billingCycle: e.target.value as "MONTHLY" | "ANNUAL",
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          >
-                            <option value="MONTHLY">Mensal</option>
-                            <option value="ANNUAL">Anual</option>
-                          </select>
-                        </td>
-
-                        <td className="p-2 text-xs font-mono whitespace-nowrap" title="Custo por 1k pts (recorrente: valor mensal equivalente)">
-                          {milheiroClubEst > 0 ? fmtMoneyBR(milheiroClubEst) : "—"}
-                        </td>
-
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            value={meta.renewalDay}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const next: ClubMeta = {
-                                ...meta,
-                                renewalDay: clampDay(e.target.value),
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          />
-                        </td>
-
-                        <td className="p-2">
-                          <input
-                            type="date"
-                            value={meta.startDateISO}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const next: ClubMeta = {
-                                ...meta,
-                                startDateISO: e.target.value || isoToday(),
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          />
-                        </td>
-
-                        <td className="p-2 font-mono">{meta.tierK * 1000}</td>
-
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            min={0}
-                            value={Math.max(0, clampInt(meta.bonusPoints || 0))}
-                            disabled={!!isReleased}
-                            onChange={(e) => {
-                              const bonusPoints = Math.max(
-                                0,
-                                clampInt(e.target.value || 0)
-                              );
-                              const next: ClubMeta = {
-                                ...meta,
-                                bonusPoints,
-                              };
-                              updateItem(realIdx, {
-                                details: JSON.stringify(next),
-                                bonusMode: "TOTAL",
-                                bonusValue: bonusPoints,
-                                pointsFinal: calcItemPointsFinal({
-                                  ...it,
-                                  pointsBase: next.tierK * 1000,
-                                  bonusMode: "TOTAL",
-                                  bonusValue: bonusPoints,
-                                }),
-                              });
-                            }}
-                            className="w-full rounded-md border px-2 py-1"
-                          />
-                        </td>
-
-                        <td className="p-2 font-mono">
-                          {Math.max(0, clampInt(it.pointsFinal || 0)).toLocaleString("pt-BR")}
-                        </td>
-
-                        <td className="p-2">
-                          <button
-                            type="button"
-                            onClick={() => removeItemByIndex(realIdx)}
-                            disabled={!!isReleased}
-                            className="rounded-md border px-2 py-1 text-xs disabled:opacity-50"
-                          >
-                            Remover
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="text-xs text-gray-600">
-            Clubes são itens <b>CLUB</b>, entram no custo/total e o bônus em milhas soma no total de pontos do item.
-          </div>
-        </div>
-      )}
-
-      {/* 4) Itens (NOVO LAYOUT PROFISSIONAL) */}
-      {draft && (
-        <div className="rounded-xl border p-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="font-medium">3) Itens (pontos + custos)</h2>
-              <div className="text-xs text-gray-500">
-                Layout em cartões (não corta texto). Em telas grandes, fica bem
-                alinhado.
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={addTransferItem}
-              disabled={!!isReleased}
-              className="rounded-md bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
-            >
-              + Adicionar item
-            </button>
-          </div>
-
-          {otherItems.length === 0 && (
-            <div className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-600">
-              Sem itens ainda.
-            </div>
-          )}
-
-          {otherItems.length > 0 && (
-            <div className="space-y-3">
-              {(draft.items ?? []).map((it, realIdx) => {
-                if (it.type === "CLUB") return null;
-
-                const key = makeKey(it, realIdx);
-                const allowManual = !!itemsAllowManualFinal[key];
-
-                return (
-                  <ItemCard
-                    key={key}
-                    it={it}
-                    realIdx={realIdx}
-                    allowManual={allowManual}
-                    isReleased={!!isReleased}
-                    onUpdateItem={updateItem}
-                    onRemoveItem={removeItemByIndex}
-                    onToggleAllowManual={(v) =>
-                      setItemsAllowManualFinal((s) => ({ ...s, [key]: v }))
-                    }
+                <label className="text-sm">
+                  <span className="text-gray-600">Preço (R$)</span>
+                  <input
+                    value={clubPriceReais}
+                    onChange={(e) => setClubPriceReais(e.target.value)}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   />
-                );
-              })}
-            </div>
-          )}
-
-          <div className="text-xs text-gray-600">
-            Para o milheiro: o cálculo usa o <b>Esperado</b> da CIA (LATAM/Smiles).
-          </div>
-        </div>
-      )}
-
-      {/* 5) Saldo esperado + CIA */}
-      {draft && cedenteSel && (
-        <div className="rounded-xl border p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium">
-              4) Saldo final esperado (aplica no LIBERAR)
-            </h2>
-            <div className="text-xs text-gray-500">
-              Auto = atual + deltas dos itens/clubes
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div>
-              <label className="text-sm text-gray-600">CIA base (milheiro)</label>
-              <select
-                value={draft.ciaProgram || ""}
-                disabled={!!isReleased}
-                onChange={(e) =>
-                  updateDraft({
-                    ciaProgram: (e.target.value || null) as LoyaltyProgram | null,
-                  })
-                }
-                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              >
-                <option value="">Selecione…</option>
-                <option value="LATAM">LATAM</option>
-                <option value="SMILES">Smiles</option>
-              </select>
-
-              <div className="mt-2 text-xs text-gray-500">
-                O milheiro usa o <b>Esperado</b> da CIA selecionada.
+                </label>
+                <label className="text-sm">
+                  <span className="text-gray-600">Dia renovação</span>
+                  <input
+                    type="number"
+                    value={renewalDay}
+                    onChange={(e) => setRenewalDay(clampDay(e.target.value))}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="text-gray-600">Início</span>
+                  <input
+                    type="date"
+                    value={startDateISO}
+                    onChange={(e) => setStartDateISO(e.target.value || isoToday())}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="text-gray-600">Bônus (pontos)</span>
+                  <input
+                    type="number"
+                    value={clubBonusPts || ""}
+                    onChange={(e) => setClubBonusPts(Math.max(0, clampInt(e.target.value)))}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  />
+                </label>
+                <div className="text-sm space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={clubRecurrent}
+                      onChange={(e) => setClubRecurrent(e.target.checked)}
+                    />
+                    Assinatura recorrente
+                  </label>
+                  {clubRecurrent && (
+                    <select
+                      value={clubBilling}
+                      onChange={(e) =>
+                        setClubBilling(e.target.value as "MONTHLY" | "ANNUAL")
+                      }
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                    >
+                      <option value="MONTHLY">Mensal</option>
+                      <option value="ANNUAL">Anual</option>
+                    </select>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="rounded-lg bg-gray-50 p-3">
-              <div className="text-xs text-gray-600">Pontos usados no milheiro</div>
-              <div className="mt-1 text-sm font-semibold font-mono">
-                {Math.max(0, pointsForMilheiro(draft)).toLocaleString("pt-BR")}
-              </div>
-              <div className="mt-1 text-xs text-gray-500">
-                Base:{" "}
-                {draft.ciaProgram === "LATAM"
-                  ? "Esperado LATAM"
-                  : draft.ciaProgram === "SMILES"
-                  ? "Esperado Smiles"
-                  : "—"}
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-gray-50 p-3">
-              <div className="text-xs text-gray-600">Milheiro (pela CIA)</div>
-              <div className="mt-1 text-sm font-semibold">
-                {fmtMoneyBR(totals?.costPerKiloCents || 0)}
-              </div>
-              <div className="mt-1 text-xs text-gray-500">
-                (usa o <b>Esperado</b> da CIA)
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-4">
-            <ExpectedBalance
-              label="LATAM"
-              program="LATAM"
-              current={cedenteSel.pontosLatam}
-              delta={computedExpected?.deltas.LATAM || 0}
-              value={draft.expectedLatamPoints}
-              auto={expectedAuto.LATAM}
-              disabled={!!isReleased}
-              onToggleAuto={(v) => setExpectedAuto((s) => ({ ...s, LATAM: v }))}
-              onChange={(v) => updateDraft({ expectedLatamPoints: v })}
-            />
-            <ExpectedBalance
-              label="Smiles"
-              program="SMILES"
-              current={cedenteSel.pontosSmiles}
-              delta={computedExpected?.deltas.SMILES || 0}
-              value={draft.expectedSmilesPoints}
-              auto={expectedAuto.SMILES}
-              disabled={!!isReleased}
-              onToggleAuto={(v) => setExpectedAuto((s) => ({ ...s, SMILES: v }))}
-              onChange={(v) => updateDraft({ expectedSmilesPoints: v })}
-            />
-            <ExpectedBalance
-              label="Livelo"
-              program="LIVELO"
-              current={cedenteSel.pontosLivelo}
-              delta={computedExpected?.deltas.LIVELO || 0}
-              value={draft.expectedLiveloPoints}
-              auto={expectedAuto.LIVELO}
-              disabled={!!isReleased}
-              onToggleAuto={(v) => setExpectedAuto((s) => ({ ...s, LIVELO: v }))}
-              onChange={(v) => updateDraft({ expectedLiveloPoints: v })}
-            />
-            <ExpectedBalance
-              label="Esfera"
-              program="ESFERA"
-              current={cedenteSel.pontosEsfera}
-              delta={computedExpected?.deltas.ESFERA || 0}
-              value={draft.expectedEsferaPoints}
-              auto={expectedAuto.ESFERA}
-              disabled={!!isReleased}
-              onToggleAuto={(v) => setExpectedAuto((s) => ({ ...s, ESFERA: v }))}
-              onChange={(v) => updateDraft({ expectedEsferaPoints: v })}
-            />
-          </div>
-
-          <div className="text-xs text-gray-600">
-            Ao clicar em <b>LIBERAR</b>,{" "}
-            {isOperationalHouseCedente(cedenteSel)
-              ? "o estoque operacional será atualizado para "
-              : "os pontos do cedente serão atualizados para "}
-            <b>esses saldos</b>.
-          </div>
-        </div>
-      )}
-
-      {draft && (
-        <div className="text-xs text-gray-500">
-          {saving ? "Salvando…" : "Autosave ativo (~0,65s ao editar)."}{" "}
-          {draft.status === "CLOSED" ? "Compra liberada (travada)." : ""}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DraftActions(props: {
-  draft: PurchaseDraft;
-  saving: boolean;
-  isReleased: boolean;
-  onSave: () => void;
-  onRelease: () => void;
-}) {
-  const { draft, saving, isReleased, onSave, onRelease } = props;
-
-  const ptsMilheiro = pointsForMilheiro(draft);
-  const releaseDisabled =
-    isReleased || saving || !draft.ciaProgram || !ptsMilheiro || ptsMilheiro <= 0;
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={saving || isReleased}
-        className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
-      >
-        Salvar
-      </button>
-
-      <button
-        type="button"
-        onClick={onRelease}
-        disabled={releaseDisabled}
-        className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
-      >
-        LIBERAR (aplicar saldo)
-      </button>
-    </div>
-  );
-}
-
-function Row(props: { label: string; value: string; bold?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-600">{props.label}</span>
-      <span className={props.bold ? "font-semibold" : ""}>{props.value}</span>
-    </div>
-  );
-}
-
-function ExpectedBalance(props: {
-  label: string;
-  program: LoyaltyProgram;
-  current: number;
-  delta: number;
-  value: number | null;
-  auto: boolean;
-  disabled?: boolean;
-  onToggleAuto: (v: boolean) => void;
-  onChange: (v: number | null) => void;
-}) {
-  const { label, current, delta, value, auto, disabled, onToggleAuto, onChange } =
-    props;
-
-  const signedDelta =
-    delta === 0
-      ? "0"
-      : delta > 0
-      ? `+${delta.toLocaleString("pt-BR")}`
-      : `${delta.toLocaleString("pt-BR")}`;
-
-  return (
-    <div className="rounded-xl bg-gray-50 p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">{label}</div>
-        <label className="text-[11px] text-gray-600 flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={auto}
-            disabled={disabled}
-            onChange={(e) => onToggleAuto(e.target.checked)}
-          />
-          Auto
-        </label>
-      </div>
-
-      <div className="mt-1 text-xs text-gray-600">
-        Atual: <b>{current.toLocaleString("pt-BR")}</b>
-      </div>
-
-      <div className="text-xs text-gray-600">
-        Delta:{" "}
-        <b className={delta >= 0 ? "text-emerald-700" : "text-red-700"}>
-          {signedDelta}
-        </b>
-      </div>
-
-      <label className="mt-2 block text-xs text-gray-600">Esperado</label>
-      <input
-        type="number"
-        value={value ?? ""}
-        disabled={disabled || auto}
-        onChange={(e) => {
-          const raw = e.target.value;
-          if (raw === "") return onChange(null);
-          const n = Number(raw);
-          onChange(Number.isFinite(n) ? Math.trunc(n) : 0);
-        }}
-        className="mt-1 w-full rounded-md border px-2 py-2 text-sm disabled:opacity-50"
-        placeholder="Ex: 150000"
-      />
-      {auto && (
-        <div className="mt-1 text-[11px] text-gray-500">
-          Calculado automaticamente.
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================
-   NOVO: ItemCard (Etapa 4)
-   ========================= */
-function ItemCard(props: {
-  it: PurchaseItem;
-  realIdx: number;
-  allowManual: boolean;
-  isReleased: boolean;
-  onUpdateItem: (realIdx: number, patch: Partial<PurchaseItem>) => void;
-  onRemoveItem: (realIdx: number) => void;
-  onToggleAllowManual: (v: boolean) => void;
-}) {
-  const { it, realIdx, allowManual, isReleased, onUpdateItem, onRemoveItem, onToggleAllowManual } =
-    props;
-
-  return (
-    <div className="rounded-xl border bg-white p-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-[220px]">
-          <label className="text-[11px] text-gray-600">Tipo</label>
-          <select
-            value={it.type}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, { type: e.target.value as PurchaseItemType })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-          >
-            <option value="TRANSFER">Transferência</option>
-            <option value="POINTS_BUY">Compra pontos</option>
-            <option value="ADJUSTMENT">Ajuste</option>
-            <option value="EXTRA_COST">Extra</option>
-          </select>
-        </div>
-
-        <div className="flex-1 min-w-[280px]">
-          <label className="text-[11px] text-gray-600">Título</label>
-          <input
-            value={it.title}
-            disabled={isReleased}
-            onChange={(e) => onUpdateItem(realIdx, { title: e.target.value })}
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Ex: Transfer Livelo→Smiles"
-          />
-
-          <label className="mt-2 block text-[11px] text-gray-600">
-            Detalhes (opcional)
-          </label>
-          <input
-            value={it.details || ""}
-            disabled={isReleased}
-            onChange={(e) => onUpdateItem(realIdx, { details: e.target.value })}
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="Ex: Campanha 80%, ID do pedido, observações..."
-          />
-        </div>
-
-        <div className="min-w-[200px]">
-          <label className="text-[11px] text-gray-600">Custo (R$)</label>
-          <input
-            type="number"
-            value={(it.amountCents || 0) / 100}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, {
-                amountCents: roundCents(Number(e.target.value || 0) * 100),
-              })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-          />
-
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={() => onRemoveItem(realIdx)}
-              disabled={isReleased}
-              className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
-            >
-              Remover
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="my-4 h-px bg-gray-100" />
-
-      {/* Body grid */}
-      <div className="grid gap-3 md:grid-cols-12">
-        {/* De */}
-        <div className="md:col-span-3">
-          <label className="text-[11px] text-gray-600">De (origem)</label>
-          <select
-            value={it.programFrom || ""}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, {
-                programFrom: (e.target.value || null) as any,
-              })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-          >
-            <option value="">—</option>
-            <option value="LATAM">LATAM</option>
-            <option value="SMILES">SMILES</option>
-            <option value="LIVELO">LIVELO</option>
-            <option value="ESFERA">ESFERA</option>
-          </select>
-        </div>
-
-        {/* Para */}
-        <div className="md:col-span-3">
-          <label className="text-[11px] text-gray-600">Para (destino)</label>
-          <select
-            value={it.programTo || ""}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, { programTo: (e.target.value || null) as any })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-          >
-            <option value="">—</option>
-            <option value="LATAM">LATAM</option>
-            <option value="SMILES">SMILES</option>
-            <option value="LIVELO">LIVELO</option>
-            <option value="ESFERA">ESFERA</option>
-          </select>
-        </div>
-
-        {/* Base */}
-        <div className="md:col-span-2">
-          <label className="text-[11px] text-gray-600">Pontos base</label>
-          <input
-            type="number"
-            value={it.pointsBase}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, { pointsBase: clampInt(e.target.value) })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono"
-          />
-        </div>
-
-        {/* Bônus */}
-        <div className="md:col-span-4">
-          <label className="text-[11px] text-gray-600">Bônus</label>
-          <div className="mt-1 flex gap-2">
-            <select
-              value={it.bonusMode || ""}
-              disabled={isReleased}
-              onChange={(e) =>
-                onUpdateItem(realIdx, { bonusMode: e.target.value as any })
-              }
-              className="w-[120px] rounded-md border px-3 py-2 text-sm"
-            >
-              <option value="">—</option>
-              <option value="PERCENT">%</option>
-              <option value="TOTAL">+Pts</option>
-            </select>
-
-            <input
-              type="number"
-              value={it.bonusValue ?? 0}
-              disabled={isReleased || !it.bonusMode}
-              onChange={(e) =>
-                onUpdateItem(realIdx, { bonusValue: clampInt(e.target.value) })
-              }
-              className="flex-1 rounded-md border px-3 py-2 text-sm font-mono disabled:opacity-50"
-              placeholder="0"
-            />
-          </div>
-          <div className="mt-1 text-[11px] text-gray-500">
-            % calcula em cima da base · +Pts soma fixo
-          </div>
-        </div>
-
-        {/* Final */}
-        <div className="md:col-span-4">
-          <label className="text-[11px] text-gray-600">Pontos final</label>
-          <input
-            type="number"
-            value={it.pointsFinal}
-            disabled={isReleased || !allowManual}
-            onChange={(e) =>
-              onUpdateItem(realIdx, { pointsFinal: clampInt(e.target.value) })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono disabled:opacity-50"
-          />
-
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <label className="text-[11px] text-gray-700 flex items-center gap-2">
+            <label className="block text-sm">
+              <span className="text-gray-600">Observação</span>
               <input
-                type="checkbox"
-                checked={allowManual}
-                disabled={isReleased}
-                onChange={(e) => onToggleAllowManual(e.target.checked)}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
               />
-              Permitir editar final
             </label>
+          </div>
 
-            {!allowManual && (
-              <span className="text-[11px] text-gray-500">
-                auto (base + bônus)
-              </span>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
+            <div className="font-medium">Resumo</div>
+            {itemPreview && program && cedenteSel ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Pontos no programa</span>
+                  <b className="font-mono">
+                    +{itemPreview.pointsFinal.toLocaleString("pt-BR")}{" "}
+                    {PROGRAM_LABEL[program as LoyaltyProgram]}
+                  </b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Custo</span>
+                  <b>{fmtMoneyBR(itemPreview.amountCents)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Milheiro (custo ÷ pts)</span>
+                  <b>{milheiroEstimado > 0 ? fmtMoneyBR(milheiroEstimado) : "—"}</b>
+                </div>
+                <div className="flex justify-between text-xs text-gray-600 pt-2 border-t">
+                  <span>Saldo atual {PROGRAM_LABEL[program as LoyaltyProgram]}</span>
+                  <span className="font-mono">
+                    {pointsOnCedente(cedenteSel, program as LoyaltyProgram).toLocaleString(
+                      "pt-BR"
+                    )}
+                  </span>
+                </div>
+                {expectedPreview && (
+                  <div className="flex justify-between text-xs text-emerald-800">
+                    <span>Após liberar</span>
+                    <span className="font-mono">
+                      {program === "LATAM"
+                        ? expectedPreview.expectedLatamPoints
+                        : program === "SMILES"
+                          ? expectedPreview.expectedSmilesPoints
+                          : program === "LIVELO"
+                            ? expectedPreview.expectedLiveloPoints
+                            : expectedPreview.expectedEsferaPoints}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-gray-500">Preencha programa e valores.</p>
             )}
           </div>
-        </div>
+        </>
+      )}
 
-        {/* Debitado origem */}
-        <div className="md:col-span-4">
-          <label className="text-[11px] text-gray-600">Debitado na origem</label>
-          <input
-            type="number"
-            value={it.pointsDebitedFromOrigin}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, {
-                pointsDebitedFromOrigin: clampInt(e.target.value),
-              })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono"
-            placeholder="0"
-          />
-          <div className="mt-1 text-[11px] text-gray-500">
-            Se o destino recebe e a origem perde, preencha aqui.
-          </div>
-        </div>
+      {isClosed && (
+        <p className="text-sm text-emerald-700">
+          Esta compra já foi liberada. Volte para a lista de compras.
+        </p>
+      )}
 
-        {/* Modo */}
-        <div className="md:col-span-4">
-          <label className="text-[11px] text-gray-600">Modo</label>
-          <select
-            value={it.transferMode || ""}
-            disabled={isReleased}
-            onChange={(e) =>
-              onUpdateItem(realIdx, {
-                transferMode: (e.target.value || null) as any,
-              })
-            }
-            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-          >
-            <option value="">—</option>
-            <option value="FULL_POINTS">Só pontos</option>
-            <option value="POINTS_PLUS_CASH">Pontos + dinheiro</option>
-          </select>
-          <div className="mt-1 text-[11px] text-gray-500">
-            Use para registrar a forma do resgate/transferência.
-          </div>
-        </div>
-
-        {/* Quick summary */}
-        <div className="md:col-span-4">
-          <label className="text-[11px] text-gray-600">Resumo rápido</label>
-          <div className="mt-1 rounded-md border bg-gray-50 px-3 py-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Final</span>
-              <span className="font-mono font-semibold">
-                {clampInt(it.pointsFinal).toLocaleString("pt-BR")}
-              </span>
-            </div>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-gray-600">Custo</span>
-              <span className="font-semibold">{fmtMoneyBR(it.amountCents || 0)}</span>
-            </div>
-            <div className="mt-1 text-[11px] text-gray-500">
-              {it.programFrom ? PROGRAM_LABEL[it.programFrom] : "—"} →{" "}
-              {it.programTo ? PROGRAM_LABEL[it.programTo] : "—"}
-            </div>
-          </div>
-        </div>
-      </div>
+      <p className="text-xs text-gray-500">
+        {saving ? "Salvando…" : ""}{" "}
+        Use <b>Salvar agora</b> antes de liberar. Transferências entre programas:{" "}
+        <a href="/dashboard/compras/transferir" className="underline text-blue-700">
+          Transferir pontos
+        </a>
+        .
+      </p>
     </div>
   );
 }

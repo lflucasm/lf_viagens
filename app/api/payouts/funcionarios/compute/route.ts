@@ -135,6 +135,7 @@ function isCompanyCardName(owner: string) {
   if (!s) return false;
 
   const needles = [
+    "lf viagens",
     "vias aereas",
     "via s aereas",
     "trademiles",

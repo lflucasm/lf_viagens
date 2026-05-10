@@ -326,7 +326,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
               className="w-full rounded-xl border px-3 py-2"
               value={team}
               onChange={(e) => setTeam(e.target.value)}
-              placeholder="ex: @vias_aereas"
+              placeholder="LF Viagens"
             />
             <p className="mt-1 text-xs text-slate-500">
               Identificador do time no sistema (mesmo valor usado em sessão e filtros). Ao mudar, o funcionário passa a

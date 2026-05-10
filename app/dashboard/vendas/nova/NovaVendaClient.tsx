@@ -473,10 +473,6 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     valorPontosStr,
     embarqueFeeCents,
   ]);
-  const commissionCents = useMemo(
-    () => Math.round(pointsValueCents * 0.01),
-    [pointsValueCents]
-  );
 
   // encontra pela compra.numero (ID00018)
   const compraSel = useMemo(
@@ -492,13 +488,13 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
   const metaMilheiroCents =
     compraSel?.metaMilheiroCents || invForProgram?.avgMilheiroCents || 0;
 
-  const bonusCents = useMemo(() => {
-    if (!metaMilheiroCents) return 0;
+  /** Lucro em R$ quando o milheiro de venda fica acima do custo médio (base do milheiro). */
+  const lucroSpreadCents = useMemo(() => {
+    if (!metaMilheiroCents || metaMilheiroCents <= 0) return 0;
     const diff = milheiroCents - metaMilheiroCents;
     if (diff <= 0) return 0;
     const denom = pointsTotal / 1000;
-    const diffTotal = Math.round(denom * diff);
-    return Math.round(diffTotal * 0.3);
+    return Math.round(denom * diff);
   }, [milheiroCents, metaMilheiroCents, pointsTotal]);
 
   function switchPricingMode(next: PricingMode) {
@@ -2256,20 +2252,21 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
                     <option value="">
                       {loadingCompras
                         ? "Carregando compras liberadas..."
-                        : "Sem ID de compra — custo médio (inventário / taxa padrão)"}
+                        : "Sem vínculo — milheiro base pelo inventário / taxa padrão"}
                     </option>
                     {compras.map((c) => (
                       <option key={c.id} value={c.numero}>
-                        {c.numero} • meta{" "}
+                        {c.ciaAerea || c.numero} • base{" "}
                         {((c.metaMilheiroCents || 0) / 100)
                           .toFixed(2)
                           .replace(".", ",")}
+                        /mil
                       </option>
                     ))}
                   </select>
                   <div className="text-[11px] text-slate-500">
-                    Se não vincular compra, o custo do milheiro usa o inventário por programa ou a taxa
-                    padrão. Meta para bônus na tela:{" "}
+                    O milheiro base para o lucro vem da compra vinculada, do inventário ou da taxa padrão.
+                    Na tela:{" "}
                     <b>
                       {(metaMilheiroCents / 100).toFixed(2).replace(".", ",")} / milheiro
                     </b>
@@ -2605,17 +2602,13 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
               </div>
 
               <div className="h-px bg-slate-200 my-2" />
-              <div className="flex justify-between">
-                <span className="text-slate-600">Comissão (1%)</span>
-                <b>{fmtMoneyBR(commissionCents)}</b>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Meta (compra)</span>
+              <div className="flex justify-between text-xs text-slate-600">
+                <span>Milheiro base (custo)</span>
                 <b>{metaMilheiroCents ? fmtMoneyBR(metaMilheiroCents) : "—"}</b>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Bônus (30%)</span>
-                <b>{fmtMoneyBR(bonusCents)}</b>
+                <span className="text-slate-600">Lucro (spread milheiro)</span>
+                <b>{fmtMoneyBR(lucroSpreadCents)}</b>
               </div>
             </div>
 
@@ -2634,7 +2627,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
             </button>
 
             <div className="text-xs text-slate-500">
-              Comissão ignora taxa. Bônus = 30% do excedente acima da meta.
+              Lucro = volume de pontos × (milheiro venda − milheiro base do estoque ou compra).
             </div>
           </div>
         </div>

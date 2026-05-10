@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,8 +54,18 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "Sem permissão." }, { status: 403, headers: noCacheHeaders() });
     }
 
+    /**
+     * Lista colaboradores pagáveis (admin/staff) do mesmo time da sessão.
+     * Inclui sempre o login `lucas_fellype` se for admin/staff, mesmo com outro
+     * valor de `team` no banco (ex.: migração incompleta).
+     */
+    const whereUsers: Prisma.UserWhereInput = {
+      role: { in: ["admin", "staff"] },
+      OR: [{ team: sess.team }, { login: "lucas_fellype" }],
+    };
+
     const users = await prisma.user.findMany({
-      where: { team: sess.team, role: { in: ["admin", "staff"] } },
+      where: whereUsers,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
