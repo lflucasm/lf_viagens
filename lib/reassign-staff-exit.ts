@@ -57,4 +57,9 @@ export async function reassignEmployeeScopedData(
     where: { createdById: fromUserId },
     data: { createdById: toUserId },
   });
+
+  await prisma.cliente.updateMany({
+    where: { createdById: fromUserId },
+    data: { createdById: toUserId },
+  });
 }

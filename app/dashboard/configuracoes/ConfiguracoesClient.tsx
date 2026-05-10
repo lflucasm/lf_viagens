@@ -50,6 +50,9 @@ export default function ConfiguracoesClient() {
     isActive: true,
   });
 
+  const [removingDemo, setRemovingDemo] = useState(false);
+  const [removeDemoMsg, setRemoveDemoMsg] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -79,6 +82,37 @@ export default function ConfiguracoesClient() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function removerContasDemo() {
+    const ok = window.confirm(
+      "Remover do sistema os usuários com login eduarda, paola e lucas (somente o login curto “lucas”, não o lucas_fellype)? " +
+        "Cedentes e vínculos passam para o lucas_fellype (ou para você, se ele não existir). " +
+        "lucas_fellype e jephesson não são removidos."
+    );
+    if (!ok) return;
+    setRemovingDemo(true);
+    setRemoveDemoMsg(null);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/remove-demo-staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha na operação.");
+      const d = json.data as { removed: string[]; skipped: string[]; errors: { login: string; error: string }[] };
+      const parts: string[] = [];
+      if (d.removed?.length) parts.push(`Removidos: ${d.removed.join(", ")}`);
+      if (d.skipped?.length) parts.push(`Ignorados: ${d.skipped.join("; ")}`);
+      if (d.errors?.length) parts.push(`Erros: ${d.errors.map((e) => `${e.login}: ${e.error}`).join(" | ")}`);
+      setRemoveDemoMsg(parts.join("\n\n") || "Nada a fazer.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao remover.");
+    } finally {
+      setRemovingDemo(false);
+    }
+  }
 
   async function saveBrand(e: React.FormEvent) {
     e.preventDefault();
@@ -275,6 +309,29 @@ export default function ConfiguracoesClient() {
             </button>
           </div>
         </form>
+      </section>
+
+      <section className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Equipe — limpeza rápida</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Se ainda aparecerem <strong>eduarda</strong>, <strong>paola</strong> ou <strong>lucas</strong> (login curto)
+          na lista de funcionários, use o botão abaixo. Isso roda no servidor com o mesmo critério do script local
+          (realoca cedentes etc.). Depois, ajuste o papel do <strong>jephesson</strong> para desenvolvedor na tela de
+          edição do funcionário, se quiser que ele suma da folha.
+        </p>
+        <button
+          type="button"
+          disabled={removingDemo}
+          onClick={removerContasDemo}
+          className="mt-4 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+        >
+          {removingDemo ? "Removendo…" : "Remover contas eduarda, paola e lucas"}
+        </button>
+        {removeDemoMsg ? (
+          <pre className="mt-4 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl border border-amber-200 bg-white p-3 text-xs text-slate-800">
+            {removeDemoMsg}
+          </pre>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
