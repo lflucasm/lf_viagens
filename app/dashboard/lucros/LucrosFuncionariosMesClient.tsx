@@ -292,11 +292,6 @@ function daysInMonth(yyyyMm: string) {
   return new Date(Date.UTC(y, m, 0)).getUTCDate(); // mês seguinte, dia 0 => último dia do mês atual
 }
 
-/** ✅ dia do mês "hoje" no timezone Recife */
-function isMilheiroMesRow(r: SummaryRow) {
-  return r.user.employeeCommissionMode === "MILHEIRO_LUCRO_VENDA";
-}
-
 function recifeDayOfMonthToday() {
   const d = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -410,8 +405,9 @@ export default function LucrosFuncionariosMesClient() {
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">Funcionários — análise do mês</h2>
           <p className="text-sm text-neutral-500">
-            Baseado nos dias <b>computados</b> em Comissões → Funcionários + <b>comissão de Emissões no balcão</b> (% configurado por funcionário na operação).
-            <b> Líquido aqui é SEM taxa de embarque</b>.
+            Baseado nos dias <b>computados</b> em Comissões → Funcionários (lucro milheiro, imposto e reembolso de taxa
+            nas milhas) e na <b>comissão de emissões no balcão</b>. O total <b>líquido sem taxa</b> usa a mesma convenção
+            da tela de comissões.
           </p>
         </div>
 
@@ -445,8 +441,8 @@ export default function LucrosFuncionariosMesClient() {
         <KPI label="Comissão balcão" value={fmtMoneyBR(data?.totals.balcaoCommission || 0)} />
         <KPI label="Imposto total (milhas + balcão)" value={fmtMoneyBR(data?.totals.tax || 0)} />
         <KPI label="Taxas (reembolso)" value={fmtMoneyBR(data?.totals.fee || 0)} />
-        <KPI label="Lucro venda (milheiro)" value={fmtMoneyBR(data?.totals.milheiroLucroVendaCents || 0)} />
-        <KPI label="Bruto (C1+C2+C3+milheiro)" value={fmtMoneyBR(data?.totals.gross || 0)} />
+        <KPI label="Lucro milheiro" value={fmtMoneyBR(data?.totals.milheiroLucroVendaCents || 0)} />
+        <KPI label="Bruto (lucro milheiro)" value={fmtMoneyBR(data?.totals.gross || 0)} />
         <KPI label="Vendas (mês)" value={String(data?.totals.salesCount || 0)} />
         <KPI label="Dias computados" value={String(data?.totals.days || 0)} />
       </div>
@@ -470,10 +466,7 @@ export default function LucrosFuncionariosMesClient() {
                 <th className="px-4 py-3">Funcionário</th>
                 <th className="px-4 py-3 text-right">Dias</th>
                 <th className="px-4 py-3 text-right">Vendas</th>
-                <th className="px-4 py-3">Lucro venda (milheiro)</th>
-                <th className="px-4 py-3">C1 (1%)</th>
-                <th className="px-4 py-3">C2 (bônus)</th>
-                <th className="px-4 py-3">C3 (rateio)</th>
+                <th className="px-4 py-3">Lucro milheiro</th>
                 <th className="px-4 py-3">Imposto</th>
                 <th className="px-4 py-3">Taxa embarque</th>
                 <th className="px-4 py-3">Balcão</th>
@@ -484,41 +477,25 @@ export default function LucrosFuncionariosMesClient() {
             <tbody>
               {rows.map((r) => {
                 const display = firstName(r.user.name, r.user.login);
-                const milheiro = isMilheiroMesRow(r);
                 return (
                   <tr key={r.user.id} className="border-t">
                     <td className="px-4 py-3">
                       <div className="font-medium">{display}</div>
                       <div className="text-xs text-neutral-500">{r.user.login}</div>
-                      {milheiro ? (
-                        <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-sky-700">
-                          Lucro por venda
-                        </div>
-                      ) : null}
                     </td>
 
                     <td className="px-4 py-3 text-right tabular-nums">{r.days}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{r.salesCount}</td>
 
-                    <td className={`px-4 py-3 ${milheiro ? "font-semibold text-sky-900" : "text-neutral-400"}`}>
-                      {milheiro ? fmtMoneyBR(r.milheiroLucroVendaCents || 0) : "—"}
+                    <td className="px-4 py-3 font-semibold text-sky-900">
+                      {fmtMoneyBR(r.milheiroLucroVendaCents || 0)}
                     </td>
-
-                    <td className="px-4 py-3">{milheiro ? "—" : fmtMoneyBR(r.commission1Cents)}</td>
-                    <td className="px-4 py-3">{milheiro ? "—" : fmtMoneyBR(r.commission2Cents)}</td>
-                    <td className="px-4 py-3">{milheiro ? "—" : fmtMoneyBR(r.commission3RateioCents)}</td>
 
                     <td className="px-4 py-3">{fmtMoneyBR(r.taxCents)}</td>
                     <td className="px-4 py-3">{fmtMoneyBR(r.feeCents)}</td>
                     <td className="px-4 py-3">
-                      {milheiro ? (
-                        "—"
-                      ) : (
-                        <>
-                          <div className="font-medium">{fmtMoneyBR(r.balcaoCommissionCents)}</div>
-                          <div className="text-xs text-neutral-500">{r.balcaoOpsCount} ops</div>
-                        </>
-                      )}
+                      <div className="font-medium">{fmtMoneyBR(r.balcaoCommissionCents)}</div>
+                      <div className="text-xs text-neutral-500">{r.balcaoOpsCount} ops</div>
                     </td>
 
                     <td className="px-4 py-3 font-semibold">{fmtMoneyBR(r.netNoFeeCents)}</td>
@@ -528,7 +505,7 @@ export default function LucrosFuncionariosMesClient() {
 
               {!rows.length ? (
                 <tr>
-                  <td className="px-4 py-6 text-sm text-neutral-500" colSpan={11}>
+                  <td className="px-4 py-6 text-sm text-neutral-500" colSpan={8}>
                     Nenhum dado para este mês (ou dias ainda não foram computados).
                   </td>
                 </tr>

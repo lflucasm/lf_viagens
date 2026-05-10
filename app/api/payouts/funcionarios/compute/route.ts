@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { EmployeeCommissionMode, type LoyaltyProgram } from "@prisma/client";
+import type { LoyaltyProgram } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import {
@@ -356,16 +356,13 @@ export async function POST(req: Request) {
     // ✅ membros do time (para feeCardLabel -> userId + modalidade de comissão)
     const membersRaw = await prisma.user.findMany({
       where: { team, role: { in: ["admin", "staff"] } },
-      select: { id: true, name: true, login: true, employeeCommissionMode: true },
+      select: { id: true, name: true, login: true },
     });
     const members: TeamMemberLite[] = membersRaw.map((u) => ({
       id: String(u.id),
       nameNorm: norm(String(u.name || "")),
       loginNorm: normLogin(String(u.login || "")),
     }));
-    const commissionModeByUserId = new Map<string, EmployeeCommissionMode>(
-      membersRaw.map((u) => [String(u.id), u.employeeCommissionMode] as const)
-    );
 
     // 1) preserva payouts já pagos
     const existingPayouts = await prisma.employeePayout.findMany({
@@ -495,10 +492,7 @@ export async function POST(req: Request) {
       });
 
       const sid = s.sellerId ? String(s.sellerId) : "";
-      if (
-        sid &&
-        commissionModeByUserId.get(sid) === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA
-      ) {
+      if (sid) {
         const spread = milheiroLucroVendaCents({
           points: safeInt(s.points, 0),
           pvNoFeeCents: pvSemTaxaRow,
@@ -599,7 +593,6 @@ export async function POST(req: Request) {
       milheiroLucroVendaCents: number;
       feeCents: number;
       salesCount: number;
-      employeeCommissionMode: EmployeeCommissionMode;
     };
 
     const byUser: Record<string, Agg> = {};
@@ -611,12 +604,21 @@ export async function POST(req: Request) {
         milheiroLucroVendaCents: 0,
         feeCents: 0,
         salesCount: 0,
-        employeeCommissionMode:
-          commissionModeByUserId.get(u) ?? EmployeeCommissionMode.STANDARD,
       });
 
+    function costMilheiroFallbackDb(program: LoyaltyProgram) {
+      const lat = safeInt(settings.latamRateCents, 2000);
+      const smi = safeInt(settings.smilesRateCents, 1800);
+      const liv = safeInt(settings.liveloRateCents, 2200);
+      const esf = safeInt(settings.esferaRateCents, 1700);
+      if (program === "LATAM") return lat;
+      if (program === "SMILES") return smi;
+      if (program === "LIVELO") return liv;
+      return esf;
+    }
+
     /* =========================
-       5) SALES que entram em C1/C2/FEE
+       5) Vendas do dia (SALE_DATE) ou compras finalizadas (legado) — só spread milheiro + taxa
     ========================= */
     type SaleForCommission = {
       id: string;
@@ -674,6 +676,7 @@ export async function POST(req: Request) {
         select: {
           id: true,
           purchaseId: true,
+          cedenteId: true,
           createdAt: true,
 
           program: true,
@@ -691,6 +694,27 @@ export async function POST(req: Request) {
           sellerId: true,
         },
       });
+
+      const cedenteIdsToday = Array.from(new Set(salesTodayRaw.map((s) => s.cedenteId)));
+      const teamCedentes = await prisma.cedente.findMany({
+        where: { id: { in: cedenteIdsToday.length ? cedenteIdsToday : ["__none__"] }, owner: { team } },
+        select: { id: true },
+      });
+      const cedenteAllowed = new Set(teamCedentes.map((c) => c.id));
+
+      const invRows = await prisma.cedenteProgramInventory.findMany({
+        where: { cedenteId: { in: Array.from(cedenteAllowed) } },
+        select: { cedenteId: true, program: true, pointsBalance: true, costBasisCents: true },
+      });
+      const invAvgMilheiro = new Map<string, number>();
+      for (const i of invRows) {
+        if (safeInt(i.pointsBalance, 0) > 0 && safeInt(i.costBasisCents, 0) > 0) {
+          invAvgMilheiro.set(
+            `${i.cedenteId}:${i.program}`,
+            Math.round((safeInt(i.costBasisCents, 0) * 1000) / safeInt(i.pointsBalance, 0))
+          );
+        }
+      }
 
       const rawPurchaseIds = Array.from(
         new Set(salesTodayRaw.map((s) => String(s.purchaseId || "").trim()).filter(Boolean))
@@ -720,11 +744,23 @@ export async function POST(req: Request) {
       const byNumeroUpper = new Map(purchasesRef.map((p) => [String(p.numero || "").trim().toUpperCase(), p]));
 
       for (const s of salesTodayRaw) {
-        const rawPid = String(s.purchaseId || "").trim();
-        if (!rawPid) continue;
+        if (!cedenteAllowed.has(s.cedenteId)) continue;
 
-        const p = byId.get(rawPid) || byNumeroUpper.get(rawPid.toUpperCase());
-        if (!p) continue; // fora do team
+        const rawPid = String(s.purchaseId || "").trim();
+        let purchaseMeta = 0;
+        let purchaseCusto = 0;
+
+        if (rawPid) {
+          const p = byId.get(rawPid) || byNumeroUpper.get(rawPid.toUpperCase());
+          if (!p) continue;
+          purchaseMeta = safeInt(p.metaMilheiroCents, 0);
+          purchaseCusto = safeInt(p.custoMilheiroCents, 0);
+        } else {
+          const k = `${s.cedenteId}:${s.program}`;
+          const avg = invAvgMilheiro.get(k);
+          purchaseCusto = avg && avg > 0 ? avg : costMilheiroFallbackDb(s.program);
+          purchaseMeta = 0;
+        }
 
         salesForCommission.push({
           id: String(s.id),
@@ -742,13 +778,13 @@ export async function POST(req: Request) {
 
           metaMilheiroCents: safeInt(s.metaMilheiroCents, 0),
           sellerId: s.sellerId ?? null,
-          purchaseMetaMilheiroCents: safeInt(p.metaMilheiroCents, 0),
-          purchaseCustoMilheiroCents: safeInt(p.custoMilheiroCents, 0),
+          purchaseMetaMilheiroCents: purchaseMeta,
+          purchaseCustoMilheiroCents: purchaseCusto,
         });
       }
     }
 
-    // 6) C1/C2 OU lucro milheiro/venda + ✅ Fee reembolsado pro pagador do cartão (fallback seller)
+    // 6) Comissão milhas: lucro sobre o milheiro (spread). Imposto incide sobre esse bruto; taxa de embarque entra no líquido como reembolso (feeCents).
     for (const s of salesForCommission) {
       const sellerId = s.sellerId;
 
@@ -761,36 +797,16 @@ export async function POST(req: Request) {
           milheiroCents: s.milheiroCents,
         });
 
-        const mode =
-          commissionModeByUserId.get(String(sellerId)) ?? EmployeeCommissionMode.STANDARD;
         const aSeller = ensure(String(sellerId));
-
-        if (mode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA) {
-          const lucroV = milheiroLucroVendaCents({
-            points: s.points,
-            pvNoFeeCents: pvSemTaxa,
-            program: s.program,
-            purchaseCostMilheiroCents: s.purchaseCustoMilheiroCents,
-            settings,
-          });
-          aSeller.milheiroLucroVendaCents += safeInt(lucroV, 0);
-          aSeller.salesCount += 1;
-        } else {
-          const meta = chooseMetaMilheiro(
-            safeInt(s.metaMilheiroCents, 0) > 0 ? s.metaMilheiroCents : s.purchaseMetaMilheiroCents
-          );
-
-          const c1 =
-            safeInt(s.commissionCents, 0) > 0 ? safeInt(s.commissionCents, 0) : commission1Fallback(pvSemTaxa);
-          const c2 =
-            safeInt(s.bonusCents ?? 0, 0) > 0
-              ? safeInt(s.bonusCents ?? 0, 0)
-              : bonusFallback({ points: s.points, milheiroCents: s.milheiroCents, metaMilheiroCents: meta });
-
-          aSeller.commission1Cents += safeInt(c1, 0);
-          aSeller.commission2Cents += safeInt(c2, 0);
-          aSeller.salesCount += 1;
-        }
+        const lucroV = milheiroLucroVendaCents({
+          points: s.points,
+          pvNoFeeCents: pvSemTaxa,
+          program: s.program,
+          purchaseCostMilheiroCents: s.purchaseCustoMilheiroCents,
+          settings,
+        });
+        aSeller.milheiroLucroVendaCents += safeInt(lucroV, 0);
+        aSeller.salesCount += 1;
       }
 
       const fee = safeInt(s.embarqueFeeCents, 0);
@@ -803,36 +819,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 7) ✅ C3 = rateio do lucro líquido REAL por compra finalizada no dia
-    for (const p of purchasesFinalized) {
-      const pool = computeLucroLiquidoCompra(p);
-      if (safeInt(pool, 0) <= 0) continue;
-
-      const ownerId = p.cedente.ownerId;
-      if (!ownerId) continue;
-
-      const ownerShares = sharesByOwner[ownerId] || [];
-      const share = pickShareForDate(
-        ownerShares.map((x) => ({
-          effectiveFrom: x.effectiveFrom,
-          effectiveTo: x.effectiveTo,
-          items: x.items.map((i) => ({ payeeId: i.payeeId, bps: i.bps })),
-        })),
-        p.finalizedAt ?? start
-      );
-
-      const items = share?.items?.length ? share.items : [{ payeeId: ownerId, bps: 10000 }];
-      const splits = splitByBps(pool, items);
-
-      for (const payeeId of Object.keys(splits)) {
-        if (
-          commissionModeByUserId.get(payeeId) === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA
-        ) {
-          continue;
-        }
-        ensure(payeeId).commission3RateioCents += safeInt(splits[payeeId], 0);
-      }
-    }
+    // 7) C3 (rateio sobre compra finalizada) descontinuado — lucro só no spread por venda.
 
     const balcaoOps = await prisma.balcaoOperacao.findMany({
       where: {
@@ -885,12 +872,8 @@ export async function POST(req: Request) {
       const existing = existingByUserId.get(userId);
       if (existing?.paidById) continue;
 
-      const c1 = safeInt(agg.commission1Cents, 0);
-      const c2 = safeInt(agg.commission2Cents, 0);
-      const c3 = safeInt(agg.commission3RateioCents, 0);
       const mLv = safeInt(agg.milheiroLucroVendaCents, 0);
-
-      const gross = c1 + c2 + c3 + mLv;
+      const gross = mLv;
       const tax = taxByPercent(gross, taxPercent);
       const fee = safeInt(agg.feeCents, 0);
       const net = gross - tax + fee;
@@ -906,11 +889,10 @@ export async function POST(req: Request) {
           feeCents: fee,
           netPayCents: net,
           breakdown: {
-            commission1Cents: c1,
-            commission2Cents: c2,
-            commission3RateioCents: c3,
+            commission1Cents: 0,
+            commission2Cents: 0,
+            commission3RateioCents: 0,
             milheiroLucroVendaCents: mLv,
-            employeeCommissionMode: agg.employeeCommissionMode,
             salesCount: safeInt(agg.salesCount, 0),
             taxPercent,
             basis,
@@ -922,11 +904,10 @@ export async function POST(req: Request) {
           feeCents: fee,
           netPayCents: net,
           breakdown: {
-            commission1Cents: c1,
-            commission2Cents: c2,
-            commission3RateioCents: c3,
+            commission1Cents: 0,
+            commission2Cents: 0,
+            commission3RateioCents: 0,
             milheiroLucroVendaCents: mLv,
-            employeeCommissionMode: agg.employeeCommissionMode,
             salesCount: safeInt(agg.salesCount, 0),
             taxPercent,
             basis,

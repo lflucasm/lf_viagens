@@ -3,14 +3,8 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { Prisma, SalePaymentStatus } from "@prisma/client";
 import { triggerEmployeePayoutAutoCompute } from "@/lib/payouts/autoCompute";
-import {
-  calcBonusCents,
-  calcCommissionCents,
-  calcPointsValueCents,
-  clampInt,
-  formatSaleNumber,
-  pointsField,
-} from "../_helpers/sales";
+import { calcPointsValueCents, clampInt, formatSaleNumber, pointsField } from "../_helpers/sales";
+import { deductInventoryOnSale, getAvgCostMilheiroCentsForSale } from "@/lib/program-inventory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,6 +85,27 @@ async function nextCounter(tx: Prisma.TransactionClient, key: string) {
   });
 
   return updated.value;
+}
+
+function settingsMilheiroFallback(
+  program: Program,
+  settings: {
+    latamRateCents: number;
+    smilesRateCents: number;
+    liveloRateCents: number;
+    esferaRateCents: number;
+  } | null
+) {
+  if (!settings) {
+    if (program === "LATAM") return 2000;
+    if (program === "SMILES") return 1800;
+    if (program === "LIVELO") return 2200;
+    return 1700;
+  }
+  if (program === "LATAM") return settings.latamRateCents ?? 2000;
+  if (program === "SMILES") return settings.smilesRateCents ?? 1800;
+  if (program === "LIVELO") return settings.liveloRateCents ?? 2200;
+  return settings.esferaRateCents ?? 1700;
 }
 
 async function resolveCedenteId(tx: Prisma.TransactionClient, cedenteKey: string) {
@@ -284,6 +299,7 @@ export async function POST(req: Request) {
   const cedenteKey = String(body.cedenteId || "").trim();
   const clienteId = String(body.clienteId || "").trim();
   const purchaseKey = String(body.purchaseNumero || body.purchaseId || "").trim();
+  const metaMilheiroBody = clampInt((body as any).metaMilheiroCents);
   const sellerIdRaw = String(body.sellerId || "").trim();
 
   const feeCardLabel = body.feeCardLabel ? String(body.feeCardLabel) : null;
@@ -311,9 +327,6 @@ export async function POST(req: Request) {
   }
   if (!cedenteKey || !clienteId) {
     return NextResponse.json({ ok: false, error: "Cedente/Cliente obrigatório" }, { status: 400 });
-  }
-  if (!purchaseKey) {
-    return NextResponse.json({ ok: false, error: "Compra (ID) obrigatória" }, { status: 400 });
   }
   if (points <= 0 || passengers <= 0) {
     return NextResponse.json({ ok: false, error: "Pontos/Passageiros inválidos" }, { status: 400 });
@@ -391,22 +404,34 @@ export async function POST(req: Request) {
       const availablePts = clampInt(ced[field]);
       if (availablePts < points) throw new Error("Pontos insuficientes.");
 
-      const purchase = isPurchaseNumero(purchaseKey)
-        ? await tx.purchase.findFirst({
-            where: { numero: purchaseKey.toUpperCase(), cedenteId },
-            select: { id: true, cedenteId: true, status: true, metaMilheiroCents: true },
-          })
-        : await tx.purchase.findUnique({
-            where: { id: purchaseKey },
-            select: { id: true, cedenteId: true, status: true, metaMilheiroCents: true },
-          });
+      let purchaseIdReal: string | null = null;
+      let metaMilheiroCents = 0;
 
-      if (!purchase) throw new Error("Compra não encontrada.");
-      if (purchase.status !== "CLOSED") throw new Error("Compra não está LIBERADA.");
-      if (purchase.cedenteId !== cedenteId) throw new Error("Compra não pertence ao cedente selecionado.");
+      if (purchaseKey) {
+        const purchase = isPurchaseNumero(purchaseKey)
+          ? await tx.purchase.findFirst({
+              where: { numero: purchaseKey.toUpperCase(), cedenteId },
+              select: { id: true, cedenteId: true, status: true, metaMilheiroCents: true },
+            })
+          : await tx.purchase.findUnique({
+              where: { id: purchaseKey },
+              select: { id: true, cedenteId: true, status: true, metaMilheiroCents: true },
+            });
 
-      const purchaseIdReal = purchase.id;
-      const metaMilheiroCents = clampInt(purchase.metaMilheiroCents);
+        if (!purchase) throw new Error("Compra não encontrada.");
+        if (purchase.status !== "CLOSED") throw new Error("Compra não está LIBERADA.");
+        if (purchase.cedenteId !== cedenteId) throw new Error("Compra não pertence ao cedente selecionado.");
+
+        purchaseIdReal = purchase.id;
+        metaMilheiroCents = clampInt(purchase.metaMilheiroCents);
+      } else {
+        const settings = await tx.settings.findFirst({});
+        const fb = settingsMilheiroFallback(program, settings);
+        metaMilheiroCents =
+          metaMilheiroBody > 0
+            ? metaMilheiroBody
+            : await getAvgCostMilheiroCentsForSale(tx, cedenteId, program, fb);
+      }
 
       // ✅ NORMALIZA (PV sem taxa, total com taxa, milheiro sem taxa)
       const norm = normalizeSaleValues({
@@ -421,9 +446,9 @@ export async function POST(req: Request) {
       const totalCents = norm.totalCents;
       const milheiroFinal = norm.milheiroFinal;
 
-      // ✅ comissão e bônus SEM taxa
-      const commissionCents = calcCommissionCents(pointsValueCents);
-      const bonusCents = calcBonusCents(points, milheiroFinal, metaMilheiroCents);
+      // ✅ Lucro de funcionários: apenas spread milheiro (C1/C2/C3 descontinuados na venda).
+      const commissionCents = 0;
+      const bonusCents = 0;
 
       const n = await nextCounter(tx, "SALE");
       const numero = formatSaleNumber(n);
@@ -499,6 +524,14 @@ export async function POST(req: Request) {
           source: "SALE",
           note: `Venda ${sale.numero}${locator ? ` • Locator ${locator}` : ""}`,
         },
+      });
+
+      await deductInventoryOnSale(tx, {
+        team: sessionTeam,
+        cedenteId,
+        program,
+        pointsSold: points,
+        note: `Venda ${sale.numero}`,
       });
 
       return sale;

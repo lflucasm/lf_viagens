@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { EmployeeCommissionMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import {
@@ -71,7 +70,7 @@ export async function GET(req: Request) {
     const [users, payouts, settings] = await Promise.all([
       prisma.user.findMany({
         where: { team },
-        select: { id: true, name: true, login: true, role: true, employeeCommissionMode: true },
+        select: { id: true, name: true, login: true, role: true },
         orderBy: { name: "asc" },
       }),
       prisma.employeePayout.findMany({
@@ -212,14 +211,10 @@ export async function GET(req: Request) {
       );
       const opTax = safeInt(taxFromProfitCents(opGross, taxPercent), 0);
       const opNetNoFee = safeInt(netProfitAfterTaxCents(opGross, opTax), 0);
-      let opCommission = safeInt(
+      const opCommission = safeInt(
         sellerCommissionCentsFromNet(opNetNoFee, op.sellerCommissionPercent),
         0
       );
-      const u = users.find((x) => x.id === userId);
-      if (u?.employeeCommissionMode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA) {
-        opCommission = 0;
-      }
 
       a.balcaoOps += 1;
       a.balcaoGross += opGross;
@@ -254,7 +249,6 @@ export async function GET(req: Request) {
           name: u.name,
           login: u.login,
           role: u.role,
-          employeeCommissionMode: u.employeeCommissionMode,
         },
         days: a.days,
         salesCount: a.salesCount,

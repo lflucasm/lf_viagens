@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api";
 import { recomputeCompra } from "@/lib/compras";
 import { getSessionServer } from "@/lib/auth-server";
-import { LoyaltyProgram } from "@prisma/client";
+import { ClubBillingCycle, LoyaltyProgram } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,8 @@ type ClubMeta = {
   renewalDay?: number;
   startDateISO?: string;
   bonusPoints?: number;
+  isRecurrent?: boolean;
+  billingCycle?: "MONTHLY" | "ANNUAL";
 };
 
 const CLUB_PROGRAMS = new Set<ClubProgram>(["LATAM", "SMILES", "LIVELO", "ESFERA"]);
@@ -287,6 +289,10 @@ export async function POST(
         const renewalDay = clampDay(meta?.renewalDay);
         const subscribedAt = parseIsoDate(meta?.startDateISO) || startUTC(new Date());
         const bonusPoints = clampPts(meta?.bonusPoints ?? (it.bonusMode === "TOTAL" ? it.bonusValue : 0));
+        const isRecurrent = meta?.isRecurrent !== false;
+        const billingCycle: ClubBillingCycle =
+          meta?.billingCycle === "ANNUAL" ? ClubBillingCycle.ANNUAL : ClubBillingCycle.MONTHLY;
+        const pointsPerMonth = tierK * 1000 + bonusPoints;
 
         let smilesPromoBaseAt: Date | null = null;
         if (program === "SMILES") {
@@ -316,6 +322,9 @@ export async function POST(
             program: program as any,
             tierK,
             priceCents,
+            isRecurrent,
+            billingCycle,
+            pointsPerMonth,
             subscribedAt,
             renewalDay,
             lastRenewedAt: null,
@@ -332,6 +341,9 @@ export async function POST(
             program: program as any,
             tierK,
             priceCents,
+            isRecurrent,
+            billingCycle,
+            pointsPerMonth,
             subscribedAt,
             renewalDay,
             pointsExpireAt: auto.pointsExpireAt,

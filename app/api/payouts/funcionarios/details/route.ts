@@ -2,15 +2,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
-import { EmployeeCommissionMode } from "@prisma/client";
+import { choosePvNoFee, milheiroLucroVendaCents } from "@/lib/payouts/employeePayouts";
 import {
-  chooseC1,
-  chooseC2,
-  chooseMetaMilheiro,
-  choosePvNoFee,
-  milheiroLucroVendaCents,
-  milheiroNoFeeFromPv,
-} from "@/lib/payouts/employeePayouts";
+  balcaoProfitSemTaxaCents,
+  buildTaxRule,
+  netProfitAfterTaxCents,
+  recifeDateISO,
+  resolveTaxPercent,
+  sellerCommissionCentsFromNet,
+  taxFromProfitCents,
+} from "@/lib/balcao-commission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,6 +67,51 @@ function monthBoundsUTC(month: string) {
 function isoDayUTC(d: Date) {
   // Date -> "YYYY-MM-DD" em UTC
   return d.toISOString().slice(0, 10);
+}
+
+function dayBoundsRecife(dateISO: string) {
+  const start = new Date(`${dateISO}T00:00:00-03:00`);
+  const end = new Date(`${dateISO}T00:00:00-03:00`);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+async function balcaoCommissionDayCents(args: { team: string; userId: string; date: string }) {
+  const { start, end } = dayBoundsRecife(args.date);
+  const settings = await prisma.settings.findFirst({
+    select: { taxPercent: true, taxEffectiveFrom: true },
+  });
+  const taxRule = buildTaxRule(
+    settings ?? { taxPercent: 8, taxEffectiveFrom: null }
+  );
+  const ops = await prisma.balcaoOperacao.findMany({
+    where: {
+      team: args.team,
+      employeeId: args.userId,
+      createdAt: { gte: start, lt: end },
+    },
+    select: {
+      createdAt: true,
+      customerChargeCents: true,
+      supplierPayCents: true,
+      boardingFeeCents: true,
+      sellerCommissionPercent: true,
+    },
+  });
+  let sum = 0;
+  for (const op of ops) {
+    const opDateISO = recifeDateISO(op.createdAt);
+    const opTaxPercent = resolveTaxPercent(opDateISO, taxRule);
+    const opProfitCents = balcaoProfitSemTaxaCents({
+      customerChargeCents: op.customerChargeCents,
+      supplierPayCents: op.supplierPayCents,
+      boardingFeeCents: op.boardingFeeCents,
+    });
+    const opTaxCents = taxFromProfitCents(opProfitCents, opTaxPercent);
+    const opNetCents = netProfitAfterTaxCents(opProfitCents, opTaxCents);
+    sum += sellerCommissionCentsFromNet(opNetCents, op.sellerCommissionPercent);
+  }
+  return sum;
 }
 
 function norm(s: string) {
@@ -209,6 +255,11 @@ export async function GET(req: NextRequest) {
 
   const payout = payouts[0] || null;
 
+  const balcaoCommissionCents =
+    !scopeMonth && userId
+      ? await balcaoCommissionDayCents({ team: session.team, userId, date })
+      : 0;
+
   const base = {
     ok: true,
     scope: scopeMonth ? "month" : "day",
@@ -225,6 +276,7 @@ export async function GET(req: NextRequest) {
           tax7Cents: safeInt(payout.tax7Cents, 0),
           feeCents: safeInt(payout.feeCents, 0),
           netPayCents: safeInt(payout.netPayCents, 0),
+          balcaoCommissionCents: scopeMonth ? 0 : balcaoCommissionCents,
           paidAt: payout.paidAt ? payout.paidAt.toISOString() : null,
           paidById: payout.paidById ?? null,
           paidBy: payout.paidBy ?? null,
@@ -245,11 +297,11 @@ export async function GET(req: NextRequest) {
     breakdown: payout ? ((payout.breakdown as unknown) ?? null) : null,
     explain: payout
       ? {
-          gross: "Bruto = C1 + C2 + C3",
-          tax: "Imposto = 8% (salvo em tax7Cents)",
-          fee: "Taxas = reembolso taxa embarque (feeCents)",
-          lucroSemTaxa: "Lucro s/ taxa = gross - tax",
-          net: "Líquido (a pagar) = netPayCents (já inclui fee)",
+          gross: "Bruto = lucro sobre o milheiro (spread da venda)",
+          tax: "Imposto incide sobre o bruto (tax7Cents)",
+          fee: "Taxa de embarque = reembolso creditado no líquido (feeCents)",
+          lucroSemTaxa: "Lucro s/ taxa (milhas) = bruto − imposto; total com balcão soma comissão balcão",
+          net: "Líquido milhas = netPayCents (spread − imposto + reembolso taxa)",
         }
       : null,
   };
@@ -280,17 +332,13 @@ export async function GET(req: NextRequest) {
 
   const membersRaw = await prisma.user.findMany({
     where: { team: session.team, role: { in: ["admin", "staff"] } },
-    select: { id: true, name: true, login: true, employeeCommissionMode: true },
+    select: { id: true, name: true, login: true },
   });
   const members: TeamMemberLite[] = membersRaw.map((u) => ({
     id: String(u.id),
     nameNorm: norm(String(u.name || "")),
     loginNorm: normLogin(String(u.login || "")),
   }));
-  const commissionModeByUserId = new Map(
-    membersRaw.map((u) => [String(u.id), u.employeeCommissionMode] as const)
-  );
-
   const settings = await prisma.settings.findFirst({});
 
   const sales = await prisma.sale.findMany({
@@ -330,6 +378,41 @@ export async function GET(req: NextRequest) {
     take: 5000,
   });
 
+  function rateFallback(program: (typeof sales)[number]["program"]) {
+    const lat = safeInt(settings?.latamRateCents, 2000);
+    const smi = safeInt(settings?.smilesRateCents, 1800);
+    const liv = safeInt(settings?.liveloRateCents, 2200);
+    const esf = safeInt(settings?.esferaRateCents, 1700);
+    if (program === "LATAM") return lat;
+    if (program === "SMILES") return smi;
+    if (program === "LIVELO") return liv;
+    return esf;
+  }
+
+  const salesNeedInv = sales.filter((s) => !s.purchase);
+  const cedenteIdsInv = Array.from(new Set(salesNeedInv.map((s) => s.cedente.id)));
+  const invRows =
+    cedenteIdsInv.length > 0
+      ? await prisma.cedenteProgramInventory.findMany({
+          where: { cedenteId: { in: cedenteIdsInv } },
+          select: { cedenteId: true, program: true, pointsBalance: true, costBasisCents: true },
+        })
+      : [];
+  const invAvgMilheiro = new Map<string, number>();
+  for (const i of invRows) {
+    const p = safeInt(i.pointsBalance, 0);
+    const c = safeInt(i.costBasisCents, 0);
+    if (p > 0 && c > 0) invAvgMilheiro.set(`${i.cedenteId}:${i.program}`, Math.round((c * 1000) / p));
+  }
+
+  function purchaseCostForDetailsLine(s: (typeof sales)[number]) {
+    if (s.purchase) return safeInt(s.purchase.custoMilheiroCents, 0);
+    const k = `${s.cedente.id}:${s.program}`;
+    const avg = invAvgMilheiro.get(k);
+    if (avg && avg > 0) return avg;
+    return rateFallback(s.program);
+  }
+
   const lineFromSale = (s: (typeof sales)[number]) => {
     const fee = safeInt(s.embarqueFeeCents, 0);
     const points = safeInt(s.points, 0);
@@ -346,34 +429,19 @@ export async function GET(req: NextRequest) {
       safeInt(s.milheiroCents, 0),
       fee
     );
-    const milheiroNoFee = milheiroNoFeeFromPv(points, pvNoFee);
-    const meta = chooseMetaMilheiro(
-      safeInt(s.metaMilheiroCents, 0) > 0
-        ? safeInt(s.metaMilheiroCents, 0)
-        : safeInt(s.purchase?.metaMilheiroCents, 0)
-    );
-
-    const sellerMode = s.sellerId
-      ? commissionModeByUserId.get(String(s.sellerId))
-      : undefined;
 
     let c1 = 0;
     let c2 = 0;
     let milheiroLucroCents = 0;
 
     if (isSeller) {
-      if (sellerMode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA) {
-        milheiroLucroCents = milheiroLucroVendaCents({
-          points,
-          pvNoFeeCents: pvNoFee,
-          program: s.program,
-          purchaseCostMilheiroCents: safeInt(s.purchase?.custoMilheiroCents, 0),
-          settings: settings ?? null,
-        });
-      } else {
-        c1 = chooseC1(points, safeInt(s.commissionCents, 0), pvNoFee);
-        c2 = chooseC2(points, safeInt(s.bonusCents, 0), milheiroNoFee, meta);
-      }
+      milheiroLucroCents = milheiroLucroVendaCents({
+        points,
+        pvNoFeeCents: pvNoFee,
+        program: s.program,
+        purchaseCostMilheiroCents: purchaseCostForDetailsLine(s),
+        settings: settings ?? null,
+      });
     }
 
     return {

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { EmployeeCommissionMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import {
@@ -69,13 +68,6 @@ export async function GET(req: Request) {
       },
     });
 
-    const userRow = await prisma.user.findFirst({
-      where: { id: userId, team },
-      select: { employeeCommissionMode: true },
-    });
-    const skipBalcao =
-      userRow?.employeeCommissionMode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA;
-
     const balcaoByDate = new Map<string, number>();
     for (const op of balcaoOps) {
       const dateISO = recifeDateISO(op.createdAt);
@@ -87,9 +79,7 @@ export async function GET(req: Request) {
       });
       const taxCents = taxFromProfitCents(profitCents, percent);
       const netCents = netProfitAfterTaxCents(profitCents, taxCents);
-      const commissionCents = skipBalcao
-        ? 0
-        : sellerCommissionCentsFromNet(netCents, op.sellerCommissionPercent);
+      const commissionCents = sellerCommissionCentsFromNet(netCents, op.sellerCommissionPercent);
       balcaoByDate.set(dateISO, (balcaoByDate.get(dateISO) || 0) + commissionCents);
     }
 

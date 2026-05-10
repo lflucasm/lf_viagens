@@ -250,26 +250,8 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
     },
   });
 
-  const ownerIds = Array.from(new Set(sales.map((s) => s.cedente.ownerId).filter(Boolean)));
-
-  const shares = await prisma.profitShare.findMany({
-    where: {
-      team: session.team,
-      ownerId: { in: ownerIds.length ? ownerIds : ["__none__"] },
-      isActive: true,
-      effectiveFrom: { lte: end },
-    },
-    orderBy: { effectiveFrom: "desc" },
-    include: { items: true },
-  });
-
-  const sharesByOwner: Record<string, typeof shares> = {};
-  for (const s of shares) (sharesByOwner[s.ownerId] ||= []).push(s);
-
   type Agg = {
-    commission1Cents: number;
-    commission2Cents: number;
-    rateioCents: number;
+    milheiroLucroVendaCents: number;
     feeCents: number;
     salesCount: number;
   };
@@ -277,9 +259,7 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
   const byUser: Record<string, Agg> = {};
   const ensure = (u: string) =>
     (byUser[u] ||= {
-      commission1Cents: 0,
-      commission2Cents: 0,
-      rateioCents: 0,
+      milheiroLucroVendaCents: 0,
       feeCents: 0,
       salesCount: 0,
     });
@@ -288,65 +268,20 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
     const sellerId = s.sellerId ?? null;
     const fee = s.embarqueFeeCents ?? 0;
 
-    // ✅ PV SEM TAXA (se 0 no banco, calcula por fallback - fee)
     const pvNoFee = choosePvNoFee(s.points, s.pointsValueCents, s.milheiroCents, fee);
 
-    // ✅ milheiro SEM taxa (para bônus)
-    const milheiroNoFee = milheiroNoFeeFromPv(s.points, pvNoFee);
-
-    // ✅ C1: 1% do PV sem taxa
-    const c1 = chooseC1(s.points, s.commissionCents, pvNoFee);
-
-    // ✅ meta do bônus (sale > purchase)
-    const meta = chooseMetaMilheiro(
-      (s.metaMilheiroCents ?? 0) > 0 ? s.metaMilheiroCents : s.purchase?.metaMilheiroCents
-    );
-
-    // ✅ C2: bônus calculado sobre milheiro sem taxa
-    const c2 = chooseC2(s.points, s.bonusCents, milheiroNoFee, meta);
-
-    // ✅ comissão + reembolso taxa -> seller
     if (sellerId) {
       const a = ensure(sellerId);
-      a.commission1Cents += c1;
-      a.commission2Cents += c2;
-      a.feeCents += fee; // ✅ reembolso de taxa (não entra em comissão/rateio)
+      const lucro = milheiroLucroVendaCents({
+        points: s.points,
+        pvNoFeeCents: pvNoFee,
+        program: s.program,
+        purchaseCostMilheiroCents: s.purchase?.custoMilheiroCents ?? 0,
+        settings,
+      });
+      a.milheiroLucroVendaCents += lucro;
+      a.feeCents += fee;
       a.salesCount += 1;
-    }
-
-    // ✅ rateio -> ProfitShare do OWNER do cedente
-    const ownerId = s.cedente.ownerId;
-    const ownerShares = sharesByOwner[ownerId] || [];
-
-    const share = pickShareForDate(
-      ownerShares.map((x) => ({
-        effectiveFrom: x.effectiveFrom,
-        effectiveTo: x.effectiveTo,
-        items: x.items.map((i) => ({ payeeId: i.payeeId, bps: i.bps })),
-      })),
-      s.date
-    );
-
-    if (!share?.items?.length) continue;
-
-    // ✅ custo milheiro (compra > settings)
-    const costMilheiro = chooseCostMilheiro(s.program, s.purchase?.custoMilheiroCents ?? 0, settings);
-
-    // ✅ lucro do rateio SEM taxa: PV(sem taxa) - custo
-    const profit = profitForSaleFromPvCents({
-      points: s.points,
-      pvNoFeeCents: pvNoFee,
-      costMilheiroCents: costMilheiro,
-    });
-
-    // ✅ pool do rateio: lucro - comissão - bônus
-    const pool = Math.max(0, profit - c1 - c2);
-    if (pool <= 0) continue;
-
-    const splits = splitByBps(pool, share.items);
-    for (const payeeId of Object.keys(splits)) {
-      const a = ensure(payeeId);
-      a.rateioCents += splits[payeeId] ?? 0;
     }
   }
 
@@ -365,7 +300,7 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
   // upsert
   for (const userId of userIds) {
     const a = byUser[userId];
-    const gross = a.commission1Cents + a.commission2Cents + a.rateioCents;
+    const gross = a.milheiroLucroVendaCents;
 
     const tax = tax8(gross);
     const net = gross - tax + a.feeCents;
@@ -381,9 +316,10 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
         feeCents: a.feeCents,
         netPayCents: net,
         breakdown: {
-          commission1Cents: a.commission1Cents,
-          commission2Cents: a.commission2Cents,
-          commission3RateioCents: a.rateioCents,
+          commission1Cents: 0,
+          commission2Cents: 0,
+          commission3RateioCents: 0,
+          milheiroLucroVendaCents: a.milheiroLucroVendaCents,
           salesCount: a.salesCount,
           taxPercent: 8,
         },
@@ -394,9 +330,10 @@ export async function computeEmployeePayoutDay(session: SessionLike, date: strin
         feeCents: a.feeCents,
         netPayCents: net,
         breakdown: {
-          commission1Cents: a.commission1Cents,
-          commission2Cents: a.commission2Cents,
-          commission3RateioCents: a.rateioCents,
+          commission1Cents: 0,
+          commission2Cents: 0,
+          commission3RateioCents: 0,
+          milheiroLucroVendaCents: a.milheiroLucroVendaCents,
           salesCount: a.salesCount,
           taxPercent: 8,
         },

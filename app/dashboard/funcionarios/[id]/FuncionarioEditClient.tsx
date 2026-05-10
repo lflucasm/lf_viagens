@@ -13,7 +13,6 @@ type FuncItem = {
   role: string;
   inviteCode: string | null;
   createdAt: string;
-  employeeCommissionMode?: "STANDARD" | "MILHEIRO_LUCRO_VENDA";
   balcaoSellerCommissionPercent?: number | null;
   balcaoSellerCommissionPercentEffective?: number;
   _count?: { cedentes: number };
@@ -57,10 +56,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   const [login, setLogin] = useState("");
   const [team, setTeam] = useState("");
   const [balcaoCommissionPercent, setBalcaoCommissionPercent] = useState("");
-  const [employeeCommissionMode, setEmployeeCommissionMode] = useState<"STANDARD" | "MILHEIRO_LUCRO_VENDA">(
-    "STANDARD"
-  );
-
   // troca de senha
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -85,7 +80,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setBalcaoCommissionPercent(
         u.balcaoSellerCommissionPercent == null ? "" : String(u.balcaoSellerCommissionPercent)
       );
-      setEmployeeCommissionMode(u.employeeCommissionMode === "MILHEIRO_LUCRO_VENDA" ? "MILHEIRO_LUCRO_VENDA" : "STANDARD");
     } catch (e: any) {
       setMsg(e?.message || "Erro");
     } finally {
@@ -114,7 +108,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
         team: team.trim(),
-        employeeCommissionMode,
       };
 
       const pctRaw = balcaoCommissionPercent.trim();
@@ -274,27 +267,6 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
           <div>
             <label className="block text-sm mb-1">Login</label>
             <input className="w-full rounded-xl border px-3 py-2" value={login} onChange={(e) => setLogin(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-1">Comissão sobre vendas de milhas</label>
-            <select
-              className="w-full rounded-xl border px-3 py-2"
-              value={employeeCommissionMode}
-              onChange={(e) =>
-                setEmployeeCommissionMode(e.target.value as "STANDARD" | "MILHEIRO_LUCRO_VENDA")
-              }
-            >
-              <option value="STANDARD">Padrão — C1 (1%) + bônus + rateio (C3)</option>
-              <option value="MILHEIRO_LUCRO_VENDA">
-                Lucro por venda — só margem milheiro (PV sem taxa − custo da compra), sem C1/C2/C3
-              </option>
-            </select>
-            <p className="mt-1 text-xs text-slate-500">
-              Na modalidade <b>Lucro por venda</b>, cada venda gera comissão pela diferença entre o milheiro
-              vendido e o custo milheiro da compra vinculada (com fallback nas taxas do sistema). Não entra
-              comissão de emissões no balcão neste modo.
-            </p>
           </div>
 
           <div>

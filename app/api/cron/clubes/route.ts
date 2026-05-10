@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { autoUpdateClubStatuses } from "@/lib/clubes-automation";
+import { runClubMonthlyRenewalCreditsAllTeams } from "@/lib/clubes-renewal-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,16 @@ export async function GET(req: NextRequest) {
       changedTotal += r.changed;
     }
 
-    return NextResponse.json({ ok: true, teams: teams.length, changed: changedTotal });
+    const renewal = await runClubMonthlyRenewalCreditsAllTeams();
+
+    return NextResponse.json({
+      ok: true,
+      teams: teams.length,
+      changed: changedTotal,
+      renewalCredited: renewal.credited,
+      renewalTeams: renewal.teams,
+      renewalErrors: renewal.errors,
+    });
   } catch (e: any) {
     return bad("Falha ao rodar cron", 500);
   }

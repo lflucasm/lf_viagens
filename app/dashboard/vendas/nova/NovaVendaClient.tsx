@@ -406,6 +406,15 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
   const [purchaseNumero, setPurchaseNumero] = useState(""); // guarda ID00018
   const [loadingCompras, setLoadingCompras] = useState(false);
 
+  type ProgramInvRow = {
+    program: string;
+    avgMilheiroCents: number;
+    usesInventoryAvg: boolean;
+    cedentePoints: number;
+    costBasisCents: number;
+  };
+  const [programInv, setProgramInv] = useState<ProgramInvRow[]>([]);
+
   // funcionários (para cartão)
   const [users, setUsers] = useState<UserLite[]>([]);
 
@@ -475,7 +484,13 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     [compras, purchaseNumero]
   );
 
-  const metaMilheiroCents = compraSel?.metaMilheiroCents || 0;
+  const invForProgram = useMemo(
+    () => programInv.find((i) => i.program === program) || null,
+    [programInv, program]
+  );
+
+  const metaMilheiroCents =
+    compraSel?.metaMilheiroCents || invForProgram?.avgMilheiroCents || 0;
 
   const bonusCents = useMemo(() => {
     if (!metaMilheiroCents) return 0;
@@ -979,6 +994,30 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     return () => ac.abort();
   }, [sel?.cedente?.id, program]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!sel?.cedente?.id) {
+        setProgramInv([]);
+        return;
+      }
+      try {
+        const r = await fetch(
+          `/api/cedentes/${encodeURIComponent(sel.cedente.id)}/program-inventory`,
+          { cache: "no-store" }
+        );
+        const j = await r.json().catch(() => ({}));
+        if (!cancelled && j?.ok && Array.isArray(j.items)) setProgramInv(j.items);
+        else if (!cancelled) setProgramInv([]);
+      } catch {
+        if (!cancelled) setProgramInv([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sel?.cedente?.id]);
+
   // ✅ helper: formata input de pontos e manda pro setter certo
   function onChangePoints(setter: (v: string) => void, v: string) {
     const digits = (v || "").replace(/\D+/g, "");
@@ -990,8 +1029,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
   const canSave = useMemo(() => {
     if (!sel?.eligible) return false;
     if (!clienteId) return false;
-    if (!purchaseNumero) return false;
-    if (!compraSel) return false;
+    if (purchaseNumero && !compraSel) return false;
     if (pointsTotal <= 0 || passengers <= 0) return false;
     if (pointsValueCents <= 0 || milheiroCents <= 0) return false;
     if (!locator?.trim()) return false; // ✅ obrigatório
@@ -1142,9 +1180,8 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
 
     if (!sel?.eligible) return alert("Selecione um cedente elegível.");
     if (!clienteId) return alert("Selecione um cliente.");
-    if (!purchaseNumero)
-      return alert("Selecione a compra LIBERADA (ID00018).");
-    if (!compraSel) return alert("Compra selecionada inválida.");
+    if (purchaseNumero && !compraSel)
+      return alert("Compra selecionada inválida ou não liberada.");
     if (pointsTotal <= 0 || passengers <= 0)
       return alert("Pontos/Passageiros inválidos.");
     if (pointsValueCents <= 0) return alert("Valor dos pontos inválido.");
@@ -1175,13 +1212,12 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
     if (feeCardPreset === "MANUAL" && !feeCardLabel)
       return alert("Informe o nome do cartão (manual).");
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       program,
       points: pointsTotal,
       passengers,
       cedenteId: sel.cedente.id,
       clienteId,
-      purchaseNumero,
       date: dateISO,
       milheiroCents,
       embarqueFeeCents,
@@ -1195,6 +1231,8 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
       departureDate: departureDate || null,
       returnDate: returnDate || null,
     };
+    if (purchaseNumero) payload.purchaseNumero = purchaseNumero;
+    else if (metaMilheiroCents > 0) payload.metaMilheiroCents = metaMilheiroCents;
 
     setIsSaving(true);
     try {
@@ -1242,7 +1280,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
         embarqueFeeCents,
         totalCents,
         locator,
-        compraNumero: purchaseNumero,
+        compraNumero: purchaseNumero || "— (sem ID de compra)",
         cedenteNome: sel.cedente.nomeCompleto,
         responsavelNome: sel.cedente.owner.name,
         feeCardLabel: feeCardLabel || "—",
@@ -2208,7 +2246,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-xs text-slate-600">Compra LIBERADA</div>
+                  <div className="text-xs text-slate-600">Compra LIBERADA (opcional)</div>
                   <select
                     className="w-full rounded-xl border px-3 py-2 text-sm bg-white"
                     value={purchaseNumero}
@@ -2218,9 +2256,7 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
                     <option value="">
                       {loadingCompras
                         ? "Carregando compras liberadas..."
-                        : compras.length
-                        ? "Selecione..."
-                        : "Nenhuma compra liberada"}
+                        : "Sem ID de compra — custo médio (inventário / taxa padrão)"}
                     </option>
                     {compras.map((c) => (
                       <option key={c.id} value={c.numero}>
@@ -2232,7 +2268,12 @@ export default function NovaVendaClient({ initialMe }: { initialMe: UserLite }) 
                     ))}
                   </select>
                   <div className="text-[11px] text-slate-500">
-                    Precisa estar LIBERADA e ser do mesmo cedente.
+                    Se não vincular compra, o custo do milheiro usa o inventário por programa ou a taxa
+                    padrão. Meta para bônus na tela:{" "}
+                    <b>
+                      {(metaMilheiroCents / 100).toFixed(2).replace(".", ",")} / milheiro
+                    </b>
+                    {invForProgram?.usesInventoryAvg ? " (inventário)" : ""}.
                   </div>
                 </div>
 

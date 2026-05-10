@@ -79,6 +79,22 @@ enum ClubSubscriptionStatus {
   CANCELED
 }
 
+enum ClubBillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+/// Movimentação de pontos/custo por programa (extrato + base do milheiro médio).
+enum ProgramLedgerKind {
+  POINTS_PURCHASE
+  CLUB_MONTHLY_CREDIT
+  BONUS
+  TRANSFER_OUT
+  TRANSFER_IN
+  SALE
+  ADJUSTMENT
+}
+
 /**
  * =========================
  * ✅ PROTOCOLOS (RECLAMAÇÕES)
@@ -520,6 +536,10 @@ model Cedente {
   // ✅ WALLET
   walletBalances WalletBalance[]
 
+  // ✅ Inventário de custo médio / saldo contábil por programa (milheiro)
+  programInventories   CedenteProgramInventory[]
+  programLedgerEntries CedenteProgramLedgerEntry[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -675,6 +695,12 @@ model ClubSubscription {
   renewalDay   Int @default(1)
   monthlyBonusPoints Int @default(0)
 
+  /// Assinatura recorrente (mensalidade/anuidade) vs pontos avulsos.
+  isRecurrent    Boolean           @default(true)
+  billingCycle   ClubBillingCycle  @default(MONTHLY)
+  /// Pontos base do clube por mês (tier + bônus recorrente), quando aplicável.
+  pointsPerMonth Int?
+
   // controle operacional
   lastRenewedAt    DateTime?
   pointsExpireAt   DateTime?
@@ -760,6 +786,57 @@ model WalletBalance {
   @@index([team, program])
   @@index([cedenteId])
   @@map("wallet_balances")
+}
+
+/**
+ * =========================
+ * ✅ INVENTÁRIO DE PONTOS / CUSTO (milheiro médio por programa)
+ * =========================
+ */
+model CedenteProgramInventory {
+  id        String @id @default(cuid())
+  team      String
+  cedenteId String
+  program   LoyaltyProgram
+
+  /// Deve acompanhar o saldo do cedente no mesmo programa (pontosLatam etc.).
+  pointsBalance  Int @default(0)
+  /// Custo atribuído ao saldo atual (centavos), para WAC do milheiro.
+  costBasisCents Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@unique([cedenteId, program], map: "uniq_cedente_program_inventory")
+  @@index([team, program])
+  @@index([cedenteId])
+  @@map("cedente_program_inventories")
+}
+
+model CedenteProgramLedgerEntry {
+  id        String @id @default(cuid())
+  team      String
+  cedenteId String
+  program   LoyaltyProgram
+
+  kind           ProgramLedgerKind
+  pointsDelta    Int
+  costDeltaCents Int               @default(0)
+  bonusPoints    Int               @default(0)
+  /// Programa par (ex.: origem numa transferência gravada no destino).
+  peerProgram    LoyaltyProgram?
+
+  note       String?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  cedente Cedente @relation(fields: [cedenteId], references: [id], onDelete: Cascade)
+
+  @@index([cedenteId, program, occurredAt])
+  @@index([team, occurredAt])
+  @@map("cedente_program_ledger_entries")
 }
 
 /**

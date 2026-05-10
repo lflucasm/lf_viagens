@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { EmployeeCommissionMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import {
@@ -41,7 +40,7 @@ export async function GET() {
     const [users, payouts, settings] = await Promise.all([
       prisma.user.findMany({
         where: { team },
-        select: { id: true, name: true, login: true, role: true, employeeCommissionMode: true },
+        select: { id: true, name: true, login: true, role: true },
         orderBy: { name: "asc" },
       }),
       prisma.employeePayout.findMany({
@@ -77,9 +76,6 @@ export async function GET() {
     });
 
     const taxRule = buildTaxRule(settings);
-    const modeByUserId = new Map(
-      users.map((u) => [u.id, u.employeeCommissionMode] as const)
-    );
     const monthsSet = new Set<string>();
     const byUserMonth: Record<
       string,
@@ -127,13 +123,10 @@ export async function GET() {
       );
       const opTax = safeInt(taxFromProfitCents(opGross, taxPercent), 0);
       const opNetNoFee = safeInt(netProfitAfterTaxCents(opGross, opTax), 0);
-      let opCommission = safeInt(
+      const opCommission = safeInt(
         sellerCommissionCentsFromNet(opNetNoFee, op.sellerCommissionPercent),
         0
       );
-      if (modeByUserId.get(userId) === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA) {
-        opCommission = 0;
-      }
 
       const bucket = ensure(userId, month);
       bucket.balcaoCommission += opCommission;

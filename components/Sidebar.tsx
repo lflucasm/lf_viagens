@@ -779,6 +779,10 @@ export default function Sidebar() {
             <NavLink href="/dashboard/clubes" exact>
               Lista
             </NavLink>
+
+            <NavLink href="/dashboard/clubes/extrato" exact>
+              Extrato (programas)
+            </NavLink>
           </SubAccordion>
 
           <SubAccordion
@@ -801,13 +805,6 @@ export default function Sidebar() {
 
             <NavLink href="/dashboard/vendas" exact>
               Painel de vendas
-            </NavLink>
-
-            <NavLink href="/dashboard/vendas/compras-a-finalizar">
-              Compras a finalizar
-            </NavLink>
-            <NavLink href="/dashboard/vendas/compras-finalizadas">
-              Compras finalizadas
             </NavLink>
           </SubAccordion>
 

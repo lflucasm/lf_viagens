@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { EmployeeCommissionMode } from "@prisma/client";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import {
@@ -206,7 +205,7 @@ export async function GET(req: Request) {
     // 1) todos usuários do time
     const users = await prisma.user.findMany({
       where: { team: session.team, role: { in: ["admin", "staff"] } },
-      select: { id: true, name: true, login: true, employeeCommissionMode: true },
+      select: { id: true, name: true, login: true },
       orderBy: [{ name: "asc" }],
     });
 
@@ -265,9 +264,7 @@ export async function GET(req: Request) {
     // 3) garante retorno de TODO MUNDO (mesmo sem movimento)
     const rows = users.map((u) => {
       const p = byUserId.get(u.id);
-      const balcaoRaw = balcaoCommissionByUser.get(u.id) || 0;
-      const balcaoCommissionCents =
-        u.employeeCommissionMode === EmployeeCommissionMode.MILHEIRO_LUCRO_VENDA ? 0 : balcaoRaw;
+      const balcaoCommissionCents = balcaoCommissionByUser.get(u.id) || 0;
 
       if (p) {
         return {

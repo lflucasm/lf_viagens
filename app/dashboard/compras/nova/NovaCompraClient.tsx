@@ -86,7 +86,28 @@ type ClubMeta = {
   renewalDay: number;
   startDateISO: string;
   bonusPoints: number;
+  /** Assinatura recorrente (mensalidade/anuidade). */
+  isRecurrent?: boolean;
+  billingCycle?: "MONTHLY" | "ANNUAL";
 };
+
+function clubPtsPerMonth(meta: ClubMeta) {
+  return Math.max(1, meta.tierK * 1000 + Math.max(0, meta.bonusPoints || 0));
+}
+
+function clubEffectivePriceCentsPerMonth(meta: ClubMeta) {
+  const p = meta.priceCents || 0;
+  if (meta.isRecurrent === false) return p;
+  if (meta.billingCycle === "ANNUAL") return Math.round(p / 12);
+  return p;
+}
+
+function clubMilheiroEstimateCents(meta: ClubMeta) {
+  const pts = clubPtsPerMonth(meta);
+  const eff = clubEffectivePriceCentsPerMonth(meta);
+  if (pts <= 0 || eff <= 0) return 0;
+  return Math.round((eff * 1000) / pts);
+}
 
 function fmtMoneyBR(cents: number) {
   const v = (cents || 0) / 100;
@@ -630,6 +651,8 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
       renewalDay: new Date().getDate(),
       startDateISO: isoToday(),
       bonusPoints: 0,
+      isRecurrent: true,
+      billingCycle: "MONTHLY",
     };
 
     const item: PurchaseItem = {
@@ -1069,12 +1092,15 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
 
           {clubItems.length > 0 && (
             <div className="overflow-auto rounded-lg border">
-              <table className="min-w-[900px] w-full text-sm">
+              <table className="min-w-[1100px] w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr className="text-left">
                     <th className="p-2">Programa</th>
                     <th className="p-2">Tipo</th>
                     <th className="p-2">Valor (R$)</th>
+                    <th className="p-2">Recorrente</th>
+                    <th className="p-2">Ciclo</th>
+                    <th className="p-2">Milheiro est.</th>
                     <th className="p-2">Renova (dia)</th>
                     <th className="p-2">Data assinatura</th>
                     <th className="p-2">Base pts/mês</th>
@@ -1094,6 +1120,8 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
                     const meta = parsedMeta
                       ? {
                           ...parsedMeta,
+                          isRecurrent: parsedMeta.isRecurrent !== false,
+                          billingCycle: parsedMeta.billingCycle || "MONTHLY",
                           bonusPoints: Math.max(
                             0,
                             clampInt(parsedMeta.bonusPoints ?? bonusFromItem)
@@ -1110,7 +1138,10 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
                           renewalDay: new Date().getDate(),
                           startDateISO: isoToday(),
                           bonusPoints: Math.max(0, bonusFromItem),
+                          isRecurrent: true,
+                          billingCycle: "MONTHLY" as const,
                         };
+                    const milheiroClubEst = clubMilheiroEstimateCents(meta);
 
                     return (
                       <tr key={realIdx} className="border-t">
@@ -1182,6 +1213,52 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
                             }}
                             className="w-full rounded-md border px-2 py-1"
                           />
+                        </td>
+
+                        <td className="p-2">
+                          <select
+                            value={meta.isRecurrent !== false ? "yes" : "no"}
+                            disabled={!!isReleased}
+                            onChange={(e) => {
+                              const rec = e.target.value === "yes";
+                              const next: ClubMeta = {
+                                ...meta,
+                                isRecurrent: rec,
+                                billingCycle: rec ? meta.billingCycle || "MONTHLY" : "MONTHLY",
+                              };
+                              updateItem(realIdx, {
+                                details: JSON.stringify(next),
+                              });
+                            }}
+                            className="w-full rounded-md border px-2 py-1"
+                          >
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                          </select>
+                        </td>
+
+                        <td className="p-2">
+                          <select
+                            value={meta.billingCycle || "MONTHLY"}
+                            disabled={!!isReleased || meta.isRecurrent === false}
+                            onChange={(e) => {
+                              const next: ClubMeta = {
+                                ...meta,
+                                billingCycle: e.target.value as "MONTHLY" | "ANNUAL",
+                              };
+                              updateItem(realIdx, {
+                                details: JSON.stringify(next),
+                              });
+                            }}
+                            className="w-full rounded-md border px-2 py-1"
+                          >
+                            <option value="MONTHLY">Mensal</option>
+                            <option value="ANNUAL">Anual</option>
+                          </select>
+                        </td>
+
+                        <td className="p-2 text-xs font-mono whitespace-nowrap" title="Custo por 1k pts (recorrente: valor mensal equivalente)">
+                          {milheiroClubEst > 0 ? fmtMoneyBR(milheiroClubEst) : "—"}
                         </td>
 
                         <td className="p-2">
