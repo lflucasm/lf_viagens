@@ -7,6 +7,8 @@ import { ClubBillingCycle, LoyaltyProgram } from "@prisma/client";
 export const dynamic = "force-dynamic";
 
 type ClubProgram = LoyaltyProgram;
+type ClubMonthEntry = { program?: string; points?: number };
+
 type ClubMeta = {
   program?: ClubProgram;
   tierK?: number;
@@ -16,6 +18,9 @@ type ClubMeta = {
   bonusPoints?: number;
   isRecurrent?: boolean;
   billingCycle?: "MONTHLY" | "ANNUAL";
+  monthlyPointsMode?: "FROM_TIER" | "CUSTOM";
+  customMonthlyPoints?: number;
+  monthSchedule?: ClubMonthEntry[];
 };
 
 const CLUB_PROGRAMS = new Set<ClubProgram>(["LATAM", "SMILES", "LIVELO", "ESFERA"]);
@@ -278,9 +283,22 @@ export async function POST(
         if (!it?.id) continue;
 
         const meta = safeJsonParse<ClubMeta>(it.details);
+        const sched = Array.isArray(meta?.monthSchedule) ? meta.monthSchedule : null;
+        if (sched && sched.length > 0) {
+          const progs = new Set<ClubProgram>();
+          for (const row of sched) {
+            const p = normalizeProgram(row?.program);
+            if (p) progs.add(p);
+          }
+          if (sched.length > 1 || progs.size > 1) {
+            continue;
+          }
+        }
+
         const program =
           normalizeProgram(meta?.program) ||
           normalizeProgram(it.programTo) ||
+          (sched?.[0] ? normalizeProgram(sched[0].program) : null) ||
           null;
         if (!program) continue;
 
@@ -292,7 +310,8 @@ export async function POST(
         const isRecurrent = meta?.isRecurrent !== false;
         const billingCycle: ClubBillingCycle =
           meta?.billingCycle === "ANNUAL" ? ClubBillingCycle.ANNUAL : ClubBillingCycle.MONTHLY;
-        const pointsPerMonth = tierK * 1000 + bonusPoints;
+        const pointsPerMonth =
+          sched && sched.length === 1 ? clampPts(sched[0]?.points) : clampPts(it.pointsFinal);
 
         let smilesPromoBaseAt: Date | null = null;
         if (program === "SMILES") {
@@ -322,6 +341,7 @@ export async function POST(
             program: program as any,
             tierK,
             priceCents,
+            monthlyBonusPoints: bonusPoints,
             isRecurrent,
             billingCycle,
             pointsPerMonth,
@@ -341,6 +361,7 @@ export async function POST(
             program: program as any,
             tierK,
             priceCents,
+            monthlyBonusPoints: bonusPoints,
             isRecurrent,
             billingCycle,
             pointsPerMonth,

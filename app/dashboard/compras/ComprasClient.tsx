@@ -22,6 +22,8 @@ type PurchaseRowRaw = {
   totalCostCents?: number;
   totalCost?: number;
   totalCents?: number;
+  costPerKiloCents?: number;
+  custoMilheiroCents?: number;
 
   cedente?: {
     id: string;
@@ -42,6 +44,7 @@ type PurchaseRow = {
   ciaPointsTotal: number;
 
   totalCostCents: number;
+  costPerKiloCents: number;
 
   cedente: {
     id: string;
@@ -68,6 +71,8 @@ function normalizeRow(r: PurchaseRowRaw): PurchaseRow {
     ciaPointsTotal: asInt((r.ciaPointsTotal ?? r.pontosCiaTotal ?? 0) as any),
 
     totalCostCents: asInt((r.totalCostCents ?? r.totalCost ?? r.totalCents ?? 0) as any),
+
+    costPerKiloCents: asInt((r.costPerKiloCents ?? r.custoMilheiroCents ?? 0) as any),
 
     cedente: r.cedente ?? null,
   };
@@ -159,8 +164,30 @@ type PointsBuyRow = {
   remove?: boolean;
 };
 
+type ResumoProgram = {
+  program: LoyaltyProgram;
+  totalCostCents: number;
+  pointsEffective: number;
+  milheiroCents: number;
+};
+
+type ResumoCedente = {
+  cedente: { id: string; nomeCompleto: string; cpf: string; identificador: string };
+  programs: ResumoProgram[];
+  totalCostCents: number;
+  pointsEffective: number;
+  milheiroCents: number;
+};
+
 export default function ComprasClient() {
   const [rows, setRows] = useState<PurchaseRow[]>([]);
+  const [resumoCedentes, setResumoCedentes] = useState<ResumoCedente[]>([]);
+  const [resumoGrand, setResumoGrand] = useState<{
+    cost: number;
+    pts: number;
+    milheiro: number;
+  } | null>(null);
+  const [loadingResumo, setLoadingResumo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -232,6 +259,39 @@ export default function ComprasClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoadingResumo(true);
+      try {
+        const out = await api<{
+          ok: true;
+          cedentes: ResumoCedente[];
+          grandTotalCostCents: number;
+          grandPointsEffective: number;
+          grandMilheiroCents: number;
+        }>("/api/compras/resumo-cedentes");
+        if (!alive) return;
+        setResumoCedentes(Array.isArray(out.cedentes) ? out.cedentes : []);
+        setResumoGrand({
+          cost: asInt(out.grandTotalCostCents, 0),
+          pts: asInt(out.grandPointsEffective, 0),
+          milheiro: asInt(out.grandMilheiroCents, 0),
+        });
+      } catch {
+        if (alive) {
+          setResumoCedentes([]);
+          setResumoGrand(null);
+        }
+      } finally {
+        if (alive) setLoadingResumo(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const filtered = useMemo(() => {
     const needle = norm(q);
     const dig = onlyDigits(q);
@@ -241,7 +301,10 @@ export default function ComprasClient() {
       if (!needle && !dig) return true;
 
       const ced = r.cedente;
-      const m = milheiroCents(r.ciaPointsTotal || 0, r.totalCostCents || 0);
+      const m =
+        r.costPerKiloCents > 0
+          ? r.costPerKiloCents
+          : milheiroCents(r.ciaPointsTotal || 0, r.totalCostCents || 0);
 
       const hay = [
         r.ciaProgram || "",
@@ -393,6 +456,81 @@ export default function ComprasClient() {
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>
       )}
 
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-800">Resumo por cedente e programa</h2>
+          {loadingResumo ? <span className="text-xs text-gray-500">Carregando…</span> : null}
+        </div>
+        <p className="text-xs text-gray-600">
+          Soma de compras de pontos e clubes (abertas + liberadas). Clube com cronograma multi-mês usa a soma das
+          linhas; custo é rateado por programa proporcional aos pontos. Clube legado (sem cronograma) ainda pode usar
+          regra anual ×12. Milheiro = custo ÷ 1.000 pts efetivos.
+        </p>
+        {resumoCedentes.filter((c) => c.programs.length > 0).length === 0 && !loadingResumo ? (
+          <p className="text-sm text-gray-500">Nenhum lançamento para agregar.</p>
+        ) : (
+          <div className="overflow-auto rounded-lg border bg-white">
+            <table className="min-w-[720px] w-full text-sm">
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th className="p-2">Cedente</th>
+                  <th className="p-2">Programa</th>
+                  <th className="p-2">Custo total</th>
+                  <th className="p-2">Pts (efetivos)</th>
+                  <th className="p-2">Milheiro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumoCedentes
+                  .filter((c) => c.programs.length > 0)
+                  .flatMap((c) =>
+                  c.programs.map((p, idx) => (
+                    <tr key={`${c.cedente.id}-${p.program}`} className="border-t">
+                      {idx === 0 ? (
+                        <td className="p-2 align-top" rowSpan={c.programs.length}>
+                          <div className="font-medium">{c.cedente.nomeCompleto}</div>
+                          <div className="text-xs text-gray-500">
+                            {c.cedente.identificador} · CPF {c.cedente.cpf}
+                          </div>
+                          <div className="mt-2 text-xs font-semibold text-slate-700">
+                            Subtotal cedente: {fmtMoneyBR(c.totalCostCents)} ·{" "}
+                            {c.pointsEffective.toLocaleString("pt-BR")} pts ·{" "}
+                            {c.milheiroCents > 0 ? fmtMoneyBR(c.milheiroCents) : "—"}{" "}
+                            <span className="font-normal text-gray-500">/ 1k</span>
+                          </div>
+                        </td>
+                      ) : null}
+                      <td className="p-2 font-medium">{p.program}</td>
+                      <td className="p-2">{fmtMoneyBR(p.totalCostCents)}</td>
+                      <td className="p-2 font-mono">{p.pointsEffective.toLocaleString("pt-BR")}</td>
+                      <td className="p-2">
+                        {p.milheiroCents > 0 ? fmtMoneyBR(p.milheiroCents) : "—"}
+                        <div className="text-[11px] text-gray-500">por 1.000 pts</div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {resumoGrand && (resumoGrand.pts > 0 || resumoGrand.cost > 0) ? (
+                <tfoot>
+                  <tr className="border-t-2 bg-slate-50 font-medium">
+                    <td className="p-2" colSpan={2}>
+                      Total geral
+                    </td>
+                    <td className="p-2">{fmtMoneyBR(resumoGrand.cost)}</td>
+                    <td className="p-2 font-mono">{resumoGrand.pts.toLocaleString("pt-BR")}</td>
+                    <td className="p-2">
+                      {resumoGrand.milheiro > 0 ? fmtMoneyBR(resumoGrand.milheiro) : "—"}
+                      <div className="text-[11px] font-normal text-gray-500">por 1.000 pts</div>
+                    </td>
+                  </tr>
+                </tfoot>
+              ) : null}
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="overflow-auto rounded-xl border">
         <table className="min-w-[1180px] w-full text-sm">
           <thead className="bg-gray-50">
@@ -423,7 +561,10 @@ export default function ComprasClient() {
               const isReleased = r.status === "CLOSED";
               const isCanceled = r.status === "CANCELED";
 
-              const m = milheiroCents(r.ciaPointsTotal || 0, r.totalCostCents || 0);
+              const m =
+                r.costPerKiloCents > 0
+                  ? r.costPerKiloCents
+                  : milheiroCents(r.ciaPointsTotal || 0, r.totalCostCents || 0);
 
               return (
                 <tr key={r.id} className="border-t">

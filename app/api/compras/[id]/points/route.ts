@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
+import { computePurchaseMilheiroInputs } from "@/lib/compras";
 import type { LoyaltyProgram, PurchaseItemStatus } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -67,11 +68,17 @@ async function recalcPurchaseTotals(tx: any, purchaseId: string) {
   const comissaoCents = Math.round((subtotalCents * vendorCommissionBps) / 10000);
   const totalCents = subtotalCents + comissaoCents;
 
-  // custo milheiro usando saldoAplicado/previsto quando existir, senão usa pontosCiaTotal
-  const ptsBase = cia ? getAppliedOrPredictedPoints(p, cia, pontosCiaTotal) : pontosCiaTotal;
-  const denom = ptsBase > 0 ? ptsBase / 1000 : 0;
+  const { milheiroCents: milheiroFromItems, costCents: costPt, pointsEffective } =
+    computePurchaseMilheiroInputs(items);
 
-  const custoMilheiroCents = denom > 0 ? Math.round(totalCents / denom) : 0;
+  let custoMilheiroCents = 0;
+  if (pointsEffective > 0 && costPt > 0) {
+    custoMilheiroCents = milheiroFromItems;
+  } else {
+    const ptsBase = cia ? getAppliedOrPredictedPoints(p, cia, pontosCiaTotal) : pontosCiaTotal;
+    const denom = ptsBase > 0 ? ptsBase / 1000 : 0;
+    custoMilheiroCents = denom > 0 ? Math.round(totalCents / denom) : 0;
+  }
 
   // meta milheiro: se for 0 (default) ou menor que custo (quando antes era markup), recalcula como custo+markup
   const metaAtual = safeInt(p.metaMilheiroCents, 0);

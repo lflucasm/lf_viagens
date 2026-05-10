@@ -34,6 +34,8 @@ type PurchaseItem = {
   amountCents: number;
 };
 
+type ClubMonthRow = { program: LoyaltyProgram; points: number };
+
 type ClubMeta = {
   program: LoyaltyProgram;
   tierK: number;
@@ -43,6 +45,10 @@ type ClubMeta = {
   bonusPoints: number;
   isRecurrent?: boolean;
   billingCycle?: "MONTHLY" | "ANNUAL";
+  /** Cada linha = um mês de crédito; programa e pontos podem variar (ex.: meses já usados fora do cronograma). */
+  monthSchedule?: { program: LoyaltyProgram; points: number }[];
+  monthlyPointsMode?: "FROM_TIER" | "CUSTOM";
+  customMonthlyPoints?: number;
 };
 
 type PurchaseDraft = {
@@ -150,13 +156,6 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function pointsOnCedente(c: Cedente, p: LoyaltyProgram): number {
-  if (p === "LATAM") return c.pontosLatam;
-  if (p === "SMILES") return c.pontosSmiles;
-  if (p === "LIVELO") return c.pontosLivelo;
-  return c.pontosEsfera;
-}
-
 function buildExpected(
   c: Cedente,
   program: LoyaltyProgram,
@@ -177,6 +176,42 @@ function buildExpected(
       program === "LIVELO" ? c.pontosLivelo + deltaPts : c.pontosLivelo,
     expectedEsferaPoints:
       program === "ESFERA" ? c.pontosEsfera + deltaPts : c.pontosEsfera,
+  };
+}
+
+function normalizeProgramRow(s: unknown): LoyaltyProgram {
+  const u = String(s || "").toUpperCase();
+  if (u === "LATAM" || u === "SMILES" || u === "LIVELO" || u === "ESFERA") return u;
+  return "LATAM";
+}
+
+function buildExpectedFromSchedule(
+  c: Cedente,
+  rows: ClubMonthRow[]
+): Pick<
+  PurchaseDraft,
+  | "expectedLatamPoints"
+  | "expectedSmilesPoints"
+  | "expectedLiveloPoints"
+  | "expectedEsferaPoints"
+> {
+  let lat = c.pontosLatam;
+  let smi = c.pontosSmiles;
+  let liv = c.pontosLivelo;
+  let esf = c.pontosEsfera;
+  for (const r of rows) {
+    const n = Math.max(0, clampInt(r.points));
+    if (n <= 0) continue;
+    if (r.program === "LATAM") lat += n;
+    else if (r.program === "SMILES") smi += n;
+    else if (r.program === "LIVELO") liv += n;
+    else if (r.program === "ESFERA") esf += n;
+  }
+  return {
+    expectedLatamPoints: lat,
+    expectedSmilesPoints: smi,
+    expectedLiveloPoints: liv,
+    expectedEsferaPoints: esf,
   };
 }
 
@@ -224,6 +259,8 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
   const [clubBonusPts, setClubBonusPts] = useState(0);
   const [clubRecurrent, setClubRecurrent] = useState(true);
   const [clubBilling, setClubBilling] = useState<"MONTHLY" | "ANNUAL">("MONTHLY");
+  const [clubMonthRows, setClubMonthRows] = useState<ClubMonthRow[]>([]);
+  const [clubFillN, setClubFillN] = useState(3);
 
   const [note, setNote] = useState("");
   const [draft, setDraft] = useState<PurchaseDraft | null>(null);
@@ -287,6 +324,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         const first = items[0];
         if (first?.type === "POINTS_BUY") {
           setTipo("PONTOS");
+          setClubMonthRows([]);
           setPointsBase(clampInt(first.pointsBase));
           setBonusMode((first.bonusMode as "" | "PERCENT" | "TOTAL") || "");
           setBonusValue(clampInt(first.bonusValue ?? 0));
@@ -302,9 +340,24 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
             setClubBonusPts(Math.max(0, clampInt(m.bonusPoints)));
             setClubRecurrent(m.isRecurrent !== false);
             setClubBilling(m.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY");
+            if (Array.isArray(m.monthSchedule) && m.monthSchedule.length > 0) {
+              setClubMonthRows(
+                m.monthSchedule.map((row) => ({
+                  program: normalizeProgramRow(row.program),
+                  points: Math.max(0, clampInt(row.points)),
+                }))
+              );
+            } else {
+              const defProg = normalizeProgramRow(m.program || p0);
+              setClubMonthRows([
+                { program: defProg, points: Math.max(0, clampInt(first.pointsFinal)) },
+              ]);
+            }
           } catch {
             /* ignore */
           }
+        } else {
+          setClubMonthRows([]);
         }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Falha ao carregar compra.");
@@ -313,6 +366,16 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
       }
     })();
   }, [purchaseIdFinal]);
+
+  useEffect(() => {
+    if (tipo !== "CLUBE" || !draft?.id || draft.status === "CLOSED") return;
+    setClubMonthRows((prev) => {
+      if (prev.length > 0) return prev;
+      if (!program) return prev;
+      const p = program as LoyaltyProgram;
+      return [{ program: p, points: tierK * 1000 + clubBonusPts }];
+    });
+  }, [tipo, draft?.id, draft?.status, program, tierK, clubBonusPts]);
 
   const cedentes = useMemo(() => {
     const s = norm(query);
@@ -337,10 +400,11 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
   }, [allCedentes, query]);
 
   const itemPreview = useMemo((): PurchaseItem | null => {
-    if (!cedenteSel || !program) return null;
-    const amountCents = roundCents(Number(valorReais.replace(",", ".") || 0) * 100);
+    if (!cedenteSel) return null;
 
     if (tipo === "PONTOS") {
+      if (!program) return null;
+      const amountCents = roundCents(Number(valorReais.replace(",", ".") || 0) * 100);
       const pf = calcItemPointsFinal({
         pointsBase,
         bonusMode: bonusMode || null,
@@ -360,9 +424,20 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
       };
     }
 
+    if (tipo !== "CLUBE") return null;
+
     const priceCents = roundCents(Number(clubPriceReais.replace(",", ".") || 0) * 100);
+    const monthSchedule = clubMonthRows
+      .map((r) => ({
+        program: r.program,
+        points: Math.max(0, clampInt(r.points)),
+      }))
+      .filter((r) => r.points > 0);
+    const sumPts = monthSchedule.reduce((s, r) => s + r.points, 0);
+    if (sumPts <= 0) return null;
+    const primaryProgram = monthSchedule[0]!.program;
     const meta: ClubMeta = {
-      program: program as LoyaltyProgram,
+      program: primaryProgram,
       tierK,
       priceCents,
       renewalDay: clampDay(renewalDay),
@@ -370,19 +445,21 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
       bonusPoints: clubBonusPts,
       isRecurrent: clubRecurrent,
       billingCycle: clubBilling,
+      monthSchedule,
     };
-    const base = tierK * 1000;
-    const pf = base + Math.max(0, clubBonusPts);
     return {
       type: "CLUB",
-      title: `Clube ${PROGRAM_LABEL[program as LoyaltyProgram]} ${tierK}k`,
+      title:
+        monthSchedule.length === 1
+          ? `Clube ${PROGRAM_LABEL[primaryProgram]} (${monthSchedule.length} mês)`
+          : `Clube · ${monthSchedule.length} meses (multi-programa)`,
       details: JSON.stringify(meta),
-      programTo: program as LoyaltyProgram,
+      programTo: primaryProgram,
       programFrom: null,
-      pointsBase: base,
+      pointsBase: monthSchedule[0]?.points ?? 0,
       bonusMode: "TOTAL",
       bonusValue: clubBonusPts,
-      pointsFinal: pf,
+      pointsFinal: sumPts,
       pointsDebitedFromOrigin: 0,
       amountCents: priceCents,
     };
@@ -401,16 +478,49 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
     clubBonusPts,
     clubRecurrent,
     clubBilling,
+    clubMonthRows,
   ]);
 
   const expectedPreview = useMemo(() => {
-    if (!cedenteSel || !program || !itemPreview) return null;
-    return buildExpected(cedenteSel, program as LoyaltyProgram, itemPreview.pointsFinal);
-  }, [cedenteSel, program, itemPreview]);
+    if (!cedenteSel || !itemPreview) return null;
+    if (tipo === "PONTOS") {
+      if (!program) return null;
+      return buildExpected(cedenteSel, program as LoyaltyProgram, itemPreview.pointsFinal);
+    }
+    return buildExpectedFromSchedule(cedenteSel, clubMonthRows);
+  }, [cedenteSel, program, itemPreview, tipo, clubMonthRows]);
 
   const milheiroEstimado = useMemo(() => {
     if (!itemPreview || itemPreview.pointsFinal <= 0) return 0;
     return Math.round((itemPreview.amountCents * 1000) / itemPreview.pointsFinal);
+  }, [itemPreview]);
+
+  const clubResumoExtra = useMemo(() => {
+    if (!itemPreview || itemPreview.type !== "CLUB") return null;
+    let meta: ClubMeta;
+    try {
+      meta = JSON.parse(String(itemPreview.details || "{}")) as ClubMeta;
+    } catch {
+      return null;
+    }
+    const sched = meta.monthSchedule || [];
+    const byProgram: Partial<Record<LoyaltyProgram, number>> = {};
+    for (const row of sched) {
+      const p = row.program;
+      byProgram[p] = (byProgram[p] || 0) + row.points;
+    }
+    const totalPaid = itemPreview.amountCents;
+    const n = sched.length;
+    const rateio =
+      n > 0 && totalPaid > 0 ? Math.round(totalPaid / n) : 0;
+    return {
+      monthCount: n,
+      renewalDay: meta.renewalDay,
+      billing: meta.billingCycle,
+      totalPaid,
+      rateioPorMes: rateio,
+      byProgram,
+    };
   }, [itemPreview]);
 
   async function iniciarCompraPontos() {
@@ -440,7 +550,11 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
   }
 
   async function saveDraft(silent?: boolean): Promise<boolean> {
-    if (!draft?.id || !cedenteSel || !itemPreview || !program || !expectedPreview)
+    const primaryProgram =
+      tipo === "CLUBE"
+        ? clubMonthRows.find((r) => r.points > 0)?.program ?? program
+        : program;
+    if (!draft?.id || !cedenteSel || !itemPreview || !primaryProgram || !expectedPreview)
       return false;
     if (itemPreview.pointsFinal <= 0) return false;
     if (tipo === "PONTOS" && itemPreview.amountCents <= 0) return false;
@@ -450,7 +564,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
     try {
       const items = [mapItemToApi(itemPreview)];
       const payload = {
-        ciaProgram: program,
+        ciaProgram: primaryProgram,
         ciaPointsTotal: itemPreview.pointsFinal,
         note: note.trim() || null,
         expectedLatamPoints: expectedPreview.expectedLatamPoints,
@@ -470,7 +584,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
         numero: String(raw.numero || ""),
         status: String(raw.status || "OPEN"),
         cedenteId: String(raw.cedenteId || ""),
-        ciaProgram: (raw.ciaProgram || program) as LoyaltyProgram,
+        ciaProgram: (raw.ciaProgram || primaryProgram) as LoyaltyProgram,
         ciaPointsTotal: clampInt(raw.ciaPointsTotal ?? itemPreview.pointsFinal),
         note: (raw.note as string) ?? note,
         items: (raw.items as PurchaseItem[]) || items,
@@ -491,7 +605,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
   }
 
   async function liberar() {
-    if (!draft?.id || !expectedPreview || !program) return;
+    if (!draft?.id || !expectedPreview) return;
     setSaving(true);
     setError(null);
     try {
@@ -526,7 +640,7 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
     !!itemPreview &&
     itemPreview.pointsFinal > 0 &&
     (tipo === "CLUBE" ? itemPreview.amountCents >= 0 : itemPreview.amountCents > 0) &&
-    !!program;
+    (tipo === "CLUBE" ? clubMonthRows.some((r) => r.points > 0) : !!program);
 
   if (purchaseIdFinal && !draft && !error) {
     return (
@@ -644,7 +758,8 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
           <span className="text-gray-400 font-normal text-sm mr-2">2.</span>Programa
         </h2>
         <p className="text-xs text-gray-500">
-          Escolha em qual programa você vai <b>adicionar pontos</b> para este cedente.
+          Em <b>compra de pontos</b>, o programa único da operação. Em <b>clube</b>, use-o como padrão ao
+          adicionar linhas no cronograma — cada mês pode ser LATAM, Smiles, Livelo ou Esfera.
         </p>
         <label className="block text-sm">
           <span className="text-gray-600">Programa</span>
@@ -774,77 +889,193 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
                 </div>
               </div>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="text-sm">
-                  <span className="text-gray-600">Pacote (mil pontos)</span>
-                  <select
-                    value={tierK}
-                    onChange={(e) => setTierK(clampInt(e.target.value))}
-                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  >
-                    {CLUB_TIERS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}k / mês
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm">
-                  <span className="text-gray-600">Preço (R$)</span>
-                  <input
-                    value={clubPriceReais}
-                    onChange={(e) => setClubPriceReais(e.target.value)}
-                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="text-sm">
-                  <span className="text-gray-600">Dia renovação</span>
-                  <input
-                    type="number"
-                    value={renewalDay}
-                    onChange={(e) => setRenewalDay(clampDay(e.target.value))}
-                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="text-sm">
-                  <span className="text-gray-600">Início</span>
-                  <input
-                    type="date"
-                    value={startDateISO}
-                    onChange={(e) => setStartDateISO(e.target.value || isoToday())}
-                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="text-sm">
-                  <span className="text-gray-600">Bônus (pontos)</span>
-                  <input
-                    type="number"
-                    value={clubBonusPts || ""}
-                    onChange={(e) => setClubBonusPts(Math.max(0, clampInt(e.target.value)))}
-                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </label>
-                <div className="text-sm space-y-2">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={clubRecurrent}
-                      onChange={(e) => setClubRecurrent(e.target.checked)}
-                    />
-                    Assinatura recorrente
-                  </label>
-                  {clubRecurrent && (
+              <div className="space-y-4">
+                <p className="text-xs text-gray-600">
+                  Monte o <b>cronograma</b>: uma linha por mês que ainda vai cair (omitindo meses já creditados).
+                  Cada linha tem programa próprio e quantidade de milhas.
+                </p>
+                <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-gray-50/80 p-3">
+                  <label className="text-sm">
+                    <span className="text-gray-600">Pacote base (k/mês)</span>
                     <select
-                      value={clubBilling}
-                      onChange={(e) =>
-                        setClubBilling(e.target.value as "MONTHLY" | "ANNUAL")
-                      }
-                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      value={tierK}
+                      onChange={(e) => setTierK(clampInt(e.target.value))}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm bg-white"
                     >
-                      <option value="MONTHLY">Mensal</option>
-                      <option value="ANNUAL">Anual</option>
+                      {CLUB_TIERS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}k
+                        </option>
+                      ))}
                     </select>
-                  )}
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-gray-600">Bônus no padrão</span>
+                    <input
+                      type="number"
+                      value={clubBonusPts || ""}
+                      onChange={(e) => setClubBonusPts(Math.max(0, clampInt(e.target.value)))}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm bg-white"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-gray-600">Replicar padrão em N meses</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={36}
+                      value={clubFillN || ""}
+                      onChange={(e) => setClubFillN(Math.max(1, Math.min(36, clampInt(e.target.value))))}
+                      className="mt-1 w-24 rounded-md border px-3 py-2 text-sm bg-white"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = (program || clubMonthRows[0]?.program || "LATAM") as LoyaltyProgram;
+                      const pts = tierK * 1000 + clubBonusPts;
+                      setClubMonthRows(
+                        Array.from({ length: Math.max(1, clubFillN) }, () => ({
+                          program: p,
+                          points: pts,
+                        }))
+                      );
+                    }}
+                    className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    Aplicar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = (program || clubMonthRows[clubMonthRows.length - 1]?.program || "LATAM") as LoyaltyProgram;
+                      setClubMonthRows((s) => [
+                        ...s,
+                        { program: p, points: tierK * 1000 + clubBonusPts },
+                      ]);
+                    }}
+                    className="rounded-md bg-black px-3 py-2 text-sm text-white"
+                  >
+                    + Mês
+                  </button>
+                </div>
+
+                <div className="overflow-auto rounded-lg border">
+                  <table className="w-full min-w-[520px] text-sm">
+                    <thead className="bg-gray-50 text-left">
+                      <tr>
+                        <th className="p-2 w-16">#</th>
+                        <th className="p-2">Programa</th>
+                        <th className="p-2">Pontos</th>
+                        <th className="p-2 w-24"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clubMonthRows.map((row, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="p-2 text-gray-500">{idx + 1}</td>
+                          <td className="p-2">
+                            <select
+                              value={row.program}
+                              onChange={(e) => {
+                                const v = e.target.value as LoyaltyProgram;
+                                setClubMonthRows((s) => {
+                                  const n = [...s];
+                                  n[idx] = { ...n[idx], program: v };
+                                  return n;
+                                });
+                              }}
+                              className="w-full rounded-md border px-2 py-1.5 text-sm"
+                            >
+                              {(Object.keys(PROGRAM_LABEL) as LoyaltyProgram[]).map((p) => (
+                                <option key={p} value={p}>
+                                  {PROGRAM_LABEL[p]}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              className="w-full rounded-md border px-2 py-1.5 font-mono text-sm"
+                              value={row.points || ""}
+                              onChange={(e) => {
+                                const v = Math.max(0, clampInt(e.target.value));
+                                setClubMonthRows((s) => {
+                                  const n = [...s];
+                                  n[idx] = { ...n[idx], points: v };
+                                  return n;
+                                });
+                              }}
+                            />
+                          </td>
+                          <td className="p-2">
+                            <button
+                              type="button"
+                              disabled={clubMonthRows.length <= 1}
+                              onClick={() =>
+                                setClubMonthRows((s) => s.filter((_, j) => j !== idx))
+                              }
+                              className="text-xs text-red-700 disabled:opacity-40"
+                            >
+                              remover
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-sm">
+                    <span className="text-gray-600">Preço total (R$)</span>
+                    <input
+                      value={clubPriceReais}
+                      onChange={(e) => setClubPriceReais(e.target.value)}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-gray-600">Dia renovação</span>
+                    <input
+                      type="number"
+                      value={renewalDay}
+                      onChange={(e) => setRenewalDay(clampDay(e.target.value))}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-gray-600">Início (referência)</span>
+                    <input
+                      type="date"
+                      value={startDateISO}
+                      onChange={(e) => setStartDateISO(e.target.value || isoToday())}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <div className="text-sm space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={clubRecurrent}
+                        onChange={(e) => setClubRecurrent(e.target.checked)}
+                      />
+                      Assinatura recorrente
+                    </label>
+                    {clubRecurrent && (
+                      <select
+                        value={clubBilling}
+                        onChange={(e) =>
+                          setClubBilling(e.target.value as "MONTHLY" | "ANNUAL")
+                        }
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                      >
+                        <option value="MONTHLY">Cobrança mensal (referência)</option>
+                        <option value="ANNUAL">Cobrança anual (referência)</option>
+                      </select>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -861,43 +1092,100 @@ export default function NovaCompraClient({ purchaseId }: { purchaseId?: string }
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
             <div className="font-medium">Resumo</div>
-            {itemPreview && program && cedenteSel ? (
+            {itemPreview && cedenteSel && (tipo === "PONTOS" ? !!program : true) ? (
               <>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Pontos no programa</span>
+                  <span className="text-gray-600">
+                    {tipo === "CLUBE" ? "Total pontos (soma do cronograma)" : "Pontos no programa"}
+                  </span>
                   <b className="font-mono">
-                    +{itemPreview.pointsFinal.toLocaleString("pt-BR")}{" "}
-                    {PROGRAM_LABEL[program as LoyaltyProgram]}
+                    +{itemPreview.pointsFinal.toLocaleString("pt-BR")}
+                    {tipo === "PONTOS" && program
+                      ? ` ${PROGRAM_LABEL[program as LoyaltyProgram]}`
+                      : tipo === "CLUBE"
+                        ? " · multi-programa"
+                        : ""}
                   </b>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Custo</span>
+                  <span className="text-gray-600">
+                    {tipo === "CLUBE" && clubBilling === "ANNUAL" ? "Valor pago (referência anual)" : "Custo"}
+                  </span>
                   <b>{fmtMoneyBR(itemPreview.amountCents)}</b>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Milheiro (custo ÷ pts)</span>
+                  <span className="text-gray-600">Milheiro (custo ÷ pts totais)</span>
                   <b>{milheiroEstimado > 0 ? fmtMoneyBR(milheiroEstimado) : "—"}</b>
                 </div>
-                <div className="flex justify-between text-xs text-gray-600 pt-2 border-t">
-                  <span>Saldo atual {PROGRAM_LABEL[program as LoyaltyProgram]}</span>
-                  <span className="font-mono">
-                    {pointsOnCedente(cedenteSel, program as LoyaltyProgram).toLocaleString(
-                      "pt-BR"
+                {tipo === "CLUBE" && clubResumoExtra ? (
+                  <div className="text-xs space-y-2 border-t pt-3 mt-1 text-gray-700">
+                    <div>
+                      <b>{clubResumoExtra.monthCount}</b>{" "}
+                      {clubResumoExtra.monthCount === 1 ? "mês" : "meses"} · Renovação dia{" "}
+                      <b>{clubResumoExtra.renewalDay}</b>
+                    </div>
+                    {clubResumoExtra.billing === "ANNUAL" ? (
+                      <div>
+                        Pagamento anual: <b>{fmtMoneyBR(clubResumoExtra.totalPaid)}</b> (~
+                        <b>{fmtMoneyBR(clubResumoExtra.rateioPorMes)}</b>/mês rateado em {clubResumoExtra.monthCount || 1}{" "}
+                        meses)
+                      </div>
+                    ) : (
+                      <div>
+                        Referência mensal: <b>{fmtMoneyBR(clubResumoExtra.totalPaid)}</b>
+                      </div>
                     )}
-                  </span>
+                    <div>
+                      <div className="font-medium text-gray-800 mb-1">Pontos por programa</div>
+                      <div className="space-y-0.5 font-mono">
+                        {(Object.keys(PROGRAM_LABEL) as LoyaltyProgram[]).map((p) => {
+                          const v = clubResumoExtra.byProgram[p];
+                          if (!v) return null;
+                          return (
+                            <div key={p} className="flex justify-between gap-4">
+                              <span>{PROGRAM_LABEL[p]}</span>
+                              <span>+{v.toLocaleString("pt-BR")}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="text-xs text-gray-600 pt-2 border-t space-y-0.5">
+                  <div className="font-medium text-gray-700">Saldos atuais</div>
+                  <div className="grid grid-cols-2 gap-x-2 font-mono">
+                    <span>LATAM</span>
+                    <span className="text-right">{cedenteSel.pontosLatam.toLocaleString("pt-BR")}</span>
+                    <span>Smiles</span>
+                    <span className="text-right">{cedenteSel.pontosSmiles.toLocaleString("pt-BR")}</span>
+                    <span>Livelo</span>
+                    <span className="text-right">{cedenteSel.pontosLivelo.toLocaleString("pt-BR")}</span>
+                    <span>Esfera</span>
+                    <span className="text-right">{cedenteSel.pontosEsfera.toLocaleString("pt-BR")}</span>
+                  </div>
                 </div>
                 {expectedPreview && (
-                  <div className="flex justify-between text-xs text-emerald-800">
-                    <span>Após liberar</span>
-                    <span className="font-mono">
-                      {program === "LATAM"
-                        ? expectedPreview.expectedLatamPoints
-                        : program === "SMILES"
-                          ? expectedPreview.expectedSmilesPoints
-                          : program === "LIVELO"
-                            ? expectedPreview.expectedLiveloPoints
-                            : expectedPreview.expectedEsferaPoints}
-                    </span>
+                  <div className="text-xs text-emerald-900 pt-2 border-t space-y-1">
+                    <div className="font-medium">Após liberar</div>
+                    <div className="grid grid-cols-2 gap-x-2 font-mono">
+                      <span>LATAM</span>
+                      <span className="text-right">
+                        {expectedPreview.expectedLatamPoints?.toLocaleString("pt-BR")}
+                      </span>
+                      <span>Smiles</span>
+                      <span className="text-right">
+                        {expectedPreview.expectedSmilesPoints?.toLocaleString("pt-BR")}
+                      </span>
+                      <span>Livelo</span>
+                      <span className="text-right">
+                        {expectedPreview.expectedLiveloPoints?.toLocaleString("pt-BR")}
+                      </span>
+                      <span>Esfera</span>
+                      <span className="text-right">
+                        {expectedPreview.expectedEsferaPoints?.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
                   </div>
                 )}
               </>
