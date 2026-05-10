@@ -1860,3 +1860,42 @@ model ConsolidatorSale {
   @@index([team, createdAt])
   @@map("consolidator_sales")
 }
+
+/**
+ * Configuração global da empresa (marca, contato) — uma linha singleton.
+ */
+model AppSettings {
+  id String @id @default("default")
+
+  companyDisplayName String @default("LF Viagens")
+  companyLegalName   String @default("VIAS AÉREAS VIAGENS E TURISMO LTDA")
+  cnpj               String @default("63.817.773/0001-85")
+  /// Sem @ (ex.: viasaereastrip)
+  instagramHandle    String @default("viasaereastrip")
+  phoneDisplay       String @default("(53) 99976-0707")
+  /// Dígitos para wa.me (ex.: 5553999760707)
+  whatsappDigits     String @default("5553999760707")
+
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+/**
+ * Texto do termo exibido na página pública de indicação de cedente (/convite/...).
+ * Cada registro = um “formulário” alternativo; o titular escolhe qual aceitar.
+ */
+model CedenteIndicacaoForm {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  termVersion String   @unique
+  termBody    String   @db.Text
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("cedente_indicacao_forms")
+}

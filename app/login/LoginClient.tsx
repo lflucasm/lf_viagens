@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Instagram, MessageCircle } from "lucide-react";
@@ -19,6 +19,31 @@ export default function LoginClient() {
     const raw = params.get("next");
     return raw && raw.startsWith("/dashboard") ? raw : "/dashboard";
   }, [params]);
+
+  const [publicBrand, setPublicBrand] = useState<{
+    instagramHandle: string;
+    whatsappDigits: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/app-settings/public")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j?.ok || !j.data) return;
+        setPublicBrand({
+          instagramHandle: String(j.data.instagramHandle || "").replace(/^@/, ""),
+          whatsappDigits: String(j.data.whatsappDigits || "").replace(/\D+/g, ""),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const igHandle = publicBrand?.instagramHandle || "viasaereastrip";
+  const waDigits = publicBrand?.whatsappDigits || "5553999760707";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -112,32 +137,31 @@ export default function LoginClient() {
             </button>
           </div>
 
-          {/* Rodapé institucional */}
+          {/* Rodapé: crédito à empresa criadora */}
           <footer className="pt-3 text-center text-[11px] text-slate-500 space-y-0.5">
-            <p>LF Viagens · TradeMiles — uma empresa do grupo Vias Aéreas LTDA</p>
-            <p>CNPJ: 63.817.773/0001-85</p>
+            <p>Ferramenta TradeMiles por Vias Aéreas.</p>
           </footer>
         </form>
 
         {/* ✅ Links fora do card */}
         <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-slate-200">
           <a
-            href="https://instagram.com/viasaereastrip"
+            href={`https://instagram.com/${igHandle}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 hover:text-white"
-            aria-label="Instagram @viasaereastrip"
+            aria-label={`Instagram @${igHandle}`}
           >
             <Instagram size={18} />
-            <span className="font-medium">@viasaereastrip</span>
+            <span className="font-medium">@{igHandle}</span>
           </a>
 
           <a
-            href="https://wa.me/5553999760707"
+            href={`https://wa.me/${waDigits}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 hover:text-white"
-            aria-label="WhatsApp (53) 99976-0707"
+            aria-label="WhatsApp"
           >
             <MessageCircle size={18} />
             <span className="font-medium">WhatsApp</span>

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { releaseExcludedCpfIfNeeded } from "@/lib/cedentes/releaseExcludedCpf";
+import { isActiveIndicacaoTermVersion } from "@/lib/app-settings-ensure";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -279,6 +280,17 @@ export async function POST(
     if (!termoAceito || !termoVersao) {
       return NextResponse.json(
         { ok: false, error: "Você precisa aceitar o termo para continuar." },
+        { status: 400, headers: noCacheHeaders() }
+      );
+    }
+
+    const termoValido = await isActiveIndicacaoTermVersion(termoVersao);
+    if (!termoValido) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Versão de termo inválida ou desativada. Atualize a página e tente novamente.",
+        },
         { status: 400, headers: noCacheHeaders() }
       );
     }

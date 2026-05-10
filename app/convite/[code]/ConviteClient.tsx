@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  DEFAULT_INDICACAO_TERM_BODY,
+  DEFAULT_INDICACAO_TERM_VERSION,
+} from "@/lib/cedente-indicacao-defaults";
 
 type PixTipo = "CPF" | "CNPJ" | "EMAIL" | "TELEFONE" | "ALEATORIA" | "";
 
@@ -132,87 +136,23 @@ type CedenteSignupResp = {
   updateAllowed?: boolean;
 };
 
-const TERMO_VERSAO = "v2-2026-03";
+type PublicIndicacaoForm = {
+  id: string;
+  title: string;
+  slug: string;
+  termVersion: string;
+  termBody: string;
+  sortOrder: number;
+};
 
-/**
- * ✅ TERMO COMPLETO (texto integral)
- * - fica no client só pra exibir pro cedente
- * - a prova/registro fica no backend com termoVersao + ip + userAgent
- */
-const TERMO_TEXTO = `TERMO DE CIÊNCIA E AUTORIZAÇÃO – VIAS AÉREAS
-
-Este Termo tem por finalidade registrar a ciência expressa e autorização do TITULAR da conta para participação nas operações de compra e venda de milhas realizadas pela VIAS AÉREAS VIAGENS E TURISMO LTDA, inscrita no CNPJ sob nº 63.817.773/0001-85.
-
-1. OBJETO E FUNCIONAMENTO DAS OPERAÇÕES
-A Vias Aéreas atua na intermediação de passagens aéreas emitidas por meio dos programas de fidelidade Livelo, LATAM Pass e Smiles.
-Para viabilizar operações com margem de lucro, podem ser necessárias as seguintes etapas:
-• Adesão a clubes de pontos/milhas (Livelo, LATAM Pass e Smiles);
-• Aquisição de pontos e milhas com recursos próprios da Vias Aéreas;
-• Transferências internas de pontos;
-• Emissão de passagens aéreas;
-• Comercialização dessas passagens em balcões especializados de milhas.
-
-2. DO INVESTIMENTO E AUSÊNCIA DE PREJUÍZO AO CEDENTE
-Todo o capital investido nas operações é exclusivamente da Vias Aéreas. O TITULAR declara ciência de que:
-• Não realiza qualquer pagamento, PIX, transferência ou investimento;
-• Não assume risco financeiro;
-• Não sofre prejuízo patrimonial;
-• Não possui responsabilidade por atrasos, cancelamentos ou falhas operacionais.
-
-3. DO PAGAMENTO AO TITULAR
-Os valores pagos ao TITULAR correspondem à antecipação de lucro pela utilização da conta nos programas de fidelidade.
-O pagamento:
-• Será realizado exclusivamente ao TITULAR da conta;
-• Será feito via PIX em conta bancária de mesma titularidade;
-• Não será realizado pagamento em conta de terceiros.
-
-4. DA AQUISIÇÃO DE PONTOS
-O TITULAR declara ciência de que a aquisição de pontos e milhas realizada pela Vias Aéreas não gera qualquer dívida, obrigação financeira ou responsabilidade tributária ao TITULAR.
-
-5. DAS VALIDAÇÕES DE IDENTIDADE E DOCUMENTAÇÃO
-O TITULAR declara ciência de que as plataformas Livelo, LATAM Pass e Smiles poderão, a qualquer tempo, solicitar validações adicionais de identidade, conforme suas políticas internas, incluindo, sem se limitar a:
-• Documento oficial de identificação com foto (RG ou CNH) emitido há menos de 10 (dez) anos;
-• Comprovante de residência atualizado;
-• Selfie para conferência facial;
-• Biometria facial;
-• Envio de códigos por SMS;
-• Confirmações por ligação telefônica ou aplicativos oficiais.
-O TITULAR compromete-se a fornecer tais validações sempre que solicitado, de forma tempestiva e verdadeira, ciente de que a negativa, omissão ou recusa poderá resultar em bloqueio ou suspensão da conta junto às plataformas.
-No caso específico da LATAM, o TITULAR declara ciência de que a biometria facial poderá ser obrigatória para viabilizar a venda e emissão de passagens com os pontos da conta. Nessa hipótese, quando houver pagamento antecipado de R$ 80,00 (oitenta reais) ao TITULAR no momento da compra dos pontos, o TITULAR assume a obrigação de realizar as até 6 (seis) biometrias faciais necessárias para conclusão das operações vinculadas àquela venda.
-O TITULAR declara ainda ciência de que a recusa, omissão, atraso injustificado ou não realização das biometrias faciais solicitadas pela LATAM autoriza o cancelamento imediato deste vínculo/termo, uma vez que tal conduta gera prejuízo operacional e financeiro direto à Vias Aéreas.
-
-6. DA PROTEÇÃO E TRATAMENTO DE DADOS
-Os dados pessoais fornecidos pelo TITULAR serão armazenados em ambiente seguro, em banco de dados protegido (OneDrive corporativo da Vias Aéreas).
-O TITULAR poderá solicitar, a qualquer momento, a exclusão definitiva e irrevogável de seus dados. Ciente, contudo, de que:
-• A exclusão inviabiliza novo ingresso;
-• Não será permitida nova indicação;
-• O vínculo operacional será encerrado permanentemente.
-
-7. DA INDICAÇÃO DE NOVOS CEDENTES
-Para unificação de novos cedentes, poderá ser pago o valor de R$ 20,00 (vinte reais) por indicação válida.
-Caso o cedente indicado descumpra o presente termo e gere prejuízo à Vias Aéreas, o TITULAR que realizou a indicação ficará impossibilitado de realizar novas indicações.
-
-8. DA RESCISÃO E DAS CONSEQUÊNCIAS DA NEGATIVA DE VALIDAÇÃO
-Este termo poderá ser rescindido a qualquer momento por qualquer das partes.
-Caso o TITULAR opte por não prosseguir com as operações, a Vias Aéreas poderá apenas consumir os pontos e milhas já adquiridos, a fim de evitar prejuízo financeiro.
-A negativa injustificada, omissão ou recusa no fornecimento das validações descritas neste termo poderá resultar em:
-• Bloqueio ou suspensão da conta do TITULAR;
-• Cancelamento de operações em andamento;
-• Prejuízo financeiro direto à Vias Aéreas.
-No caso de pagamento antecipado vinculado à operação LATAM, a recusa em realizar as biometrias faciais exigidas para conclusão da venda implicará cancelamento imediato deste termo e encerramento da parceria operacional.
-Nessas hipóteses, o TITULAR declara ciência de que seus dados poderão ser removidos do banco de dados e ficará impedido de futuras negociações.
-
-9. DO IMPOSTO DE RENDA
-Os valores eventualmente recebidos pelo TITULAR possuem caráter eventual, não configurando vínculo empregatício.
-Cabe ao TITULAR avaliar eventual obrigação de declaração à Receita Federal.
-
-10. DA VERACIDADE E CIÊNCIA EXPRESSA
-Para fins de verificação pública e transparência, o TITULAR poderá consultar o perfil oficial da empresa no Instagram: @viasaereastrip.
-Ao manifestar concordância, o TITULAR declara que:
-• Leu integralmente este termo;
-• Compreendeu seu funcionamento;
-• Não sofreu indução, erro ou coação;
-• Autoriza expressamente a utilização de sua conta conforme descrito.`;
+const LOCAL_FALLBACK_FORM: PublicIndicacaoForm = {
+  id: "local-fallback",
+  title: "Termo",
+  slug: "local-fallback",
+  termVersion: DEFAULT_INDICACAO_TERM_VERSION,
+  termBody: DEFAULT_INDICACAO_TERM_BODY,
+  sortOrder: 0,
+};
 
 export default function ConviteClient({ code }: { code: string }) {
   const [form, setForm] = useState<FormState>({
@@ -241,6 +181,15 @@ export default function ConviteClient({ code }: { code: string }) {
   const [loadingInvite, setLoadingInvite] = useState(true);
   const [inviteError, setInviteError] = useState("");
   const [responsavel, setResponsavel] = useState<Responsavel | null>(null);
+
+  const [publicLoading, setPublicLoading] = useState(true);
+  const [indicacaoForms, setIndicacaoForms] = useState<PublicIndicacaoForm[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+
+  const selectedForm = useMemo(
+    () => indicacaoForms.find((f) => f.id === selectedFormId) ?? null,
+    [indicacaoForms, selectedFormId]
+  );
 
   const [termoAceito, setTermoAceito] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -300,7 +249,7 @@ export default function ConviteClient({ code }: { code: string }) {
       pontosLivelo: Number(form.pontosLivelo || 0),
       pontosEsfera: Number(form.pontosEsfera || 0),
       termoAceito: true,
-      termoVersao: TERMO_VERSAO,
+      termoVersao: selectedForm?.termVersion ?? DEFAULT_INDICACAO_TERM_VERSION,
       titularConfirmado: true,
       overwriteExisting: Boolean(overrides?.overwriteExisting),
       existingCedenteId: overrides?.existingCedenteId || null,
@@ -332,7 +281,7 @@ export default function ConviteClient({ code }: { code: string }) {
             "Encontramos um cadastro com este CPF. Revise os dados e, se fizer sentido, atualize o cadastro existente.",
         });
       }
-      const err: any = new Error(json?.error || "Falha ao cadastrar.");
+      const err = new Error(json?.error || "Falha ao cadastrar.") as Error & { isDuplicate?: boolean };
       err.isDuplicate = Boolean(json?.duplicate);
       throw err;
     }
@@ -352,11 +301,32 @@ export default function ConviteClient({ code }: { code: string }) {
       alert(json.data?.updatedExisting ? "Cadastro existente atualizado ✅" : "Cadastro enviado ✅");
       setDuplicateInfo(null);
       resetForm();
-    } catch (e: any) {
-      if (e?.isDuplicate) return;
-      alert(e?.message || "Erro ao atualizar cadastro.");
+    } catch (e: unknown) {
+      if (e && typeof e === "object" && "isDuplicate" in e && (e as { isDuplicate?: boolean }).isDuplicate) return;
+      alert(e instanceof Error ? e.message : "Erro ao atualizar cadastro.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function loadPublicSettings() {
+    setPublicLoading(true);
+    try {
+      const res = await fetch("/api/app-settings/public", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      const forms = json?.data?.indicacaoForms as PublicIndicacaoForm[] | undefined;
+      if (json?.ok && Array.isArray(forms) && forms.length > 0) {
+        setIndicacaoForms(forms);
+        setSelectedFormId(forms[0].id);
+      } else {
+        setIndicacaoForms([LOCAL_FALLBACK_FORM]);
+        setSelectedFormId(LOCAL_FALLBACK_FORM.id);
+      }
+    } catch {
+      setIndicacaoForms([LOCAL_FALLBACK_FORM]);
+      setSelectedFormId(LOCAL_FALLBACK_FORM.id);
+    } finally {
+      setPublicLoading(false);
     }
   }
 
@@ -370,8 +340,8 @@ export default function ConviteClient({ code }: { code: string }) {
       if (!json?.ok) throw new Error(json?.error || "Convite inválido.");
       if (!json.data?.responsavel) throw new Error("Convite inválido.");
       setResponsavel(json.data.responsavel);
-    } catch (e: any) {
-      setInviteError(e?.message || "Erro ao carregar convite.");
+    } catch (e: unknown) {
+      setInviteError(e instanceof Error ? e.message : "Erro ao carregar convite.");
       setResponsavel(null);
     } finally {
       setLoadingInvite(false);
@@ -380,6 +350,7 @@ export default function ConviteClient({ code }: { code: string }) {
 
   useEffect(() => {
     loadInvite();
+    loadPublicSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
@@ -411,15 +382,15 @@ export default function ConviteClient({ code }: { code: string }) {
       const json = await submitCadastro();
       alert(json.data?.updatedExisting ? "Cadastro existente atualizado ✅" : "Cadastro enviado ✅");
       resetForm();
-    } catch (e: any) {
-      if (e?.isDuplicate) return;
-      alert(e?.message || "Erro ao enviar.");
+    } catch (e: unknown) {
+      if (e && typeof e === "object" && "isDuplicate" in e && (e as { isDuplicate?: boolean }).isDuplicate) return;
+      alert(e instanceof Error ? e.message : "Erro ao enviar.");
     } finally {
       setSaving(false);
     }
   }
 
-  if (loadingInvite) {
+  if (loadingInvite || publicLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="text-sm text-slate-600">Carregando convite...</div>
@@ -459,10 +430,33 @@ export default function ConviteClient({ code }: { code: string }) {
         {/* ✅ TERMO + ACEITE */}
         <div className="mb-6 rounded-2xl border bg-white p-4 space-y-3">
           <div className="text-sm font-semibold">Termo de ciência e autorização</div>
-          <div className="text-xs text-slate-500">Versão: {TERMO_VERSAO}</div>
+          {indicacaoForms.length > 1 ? (
+            <div className="flex flex-wrap gap-2">
+              {indicacaoForms.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={
+                    f.id === selectedFormId
+                      ? "rounded-full border border-sky-600 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-900"
+                      : "rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  }
+                  onClick={() => {
+                    setSelectedFormId(f.id);
+                    setTermoAceito(false);
+                  }}
+                >
+                  {f.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="text-xs text-slate-500">
+            Versão: {selectedForm?.termVersion ?? DEFAULT_INDICACAO_TERM_VERSION}
+          </div>
 
           <div className="rounded-xl border bg-slate-50 p-3 text-xs whitespace-pre-wrap leading-relaxed max-h-[320px] overflow-auto">
-            {TERMO_TEXTO}
+            {selectedForm?.termBody ?? DEFAULT_INDICACAO_TERM_BODY}
           </div>
 
           <label className="flex items-start gap-2 text-sm">

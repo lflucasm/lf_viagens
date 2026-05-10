@@ -10,6 +10,7 @@ import {
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { getSession, signOut } from "@/lib/auth";
+import { isAdminRole } from "@/lib/session-roles";
 
 const STRICT_NOQUERY_ACTIVE_PATHS = new Set<string>([
   "/dashboard/cedentes/visualizar",
@@ -1089,7 +1090,20 @@ export default function Sidebar() {
         </Accordion>
       </nav>
 
-      <div className="border-t border-slate-200/90 bg-gradient-to-t from-slate-50/80 to-white p-2">
+      <div className="border-t border-slate-200/90 bg-gradient-to-t from-slate-50/80 to-white p-2 space-y-2">
+        {session && isAdminRole(session.role) ? (
+          <Link
+            href="/dashboard/configuracoes"
+            className={cn(
+              "flex w-full items-center justify-center rounded-xl border px-3 py-2.5 text-sm font-medium shadow-sm transition-colors",
+              pathname === "/dashboard/configuracoes"
+                ? "border-violet-300 bg-violet-100 text-violet-950 ring-2 ring-violet-400/40"
+                : "border-slate-200 bg-white text-slate-800 hover:border-violet-200 hover:bg-violet-50/80"
+            )}
+          >
+            Configurações
+          </Link>
+        ) : null}
         <button
           type="button"
           onClick={doLogout}

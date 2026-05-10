@@ -8,6 +8,7 @@ import {
   CalendarDays,
   LayoutDashboard,
   Loader2,
+  Phone,
   Plane,
   ShoppingCart,
   Store,
@@ -60,6 +61,16 @@ export default function DashboardHomeClient({
   const [presenceError, setPresenceError] = useState<string | null>(null);
   const [members, setMembers] = useState<PresenceMember[]>([]);
 
+  const [brandLoading, setBrandLoading] = useState(true);
+  const [brand, setBrand] = useState<{
+    companyDisplayName: string;
+    companyLegalName: string;
+    cnpj: string;
+    instagramHandle: string;
+    phoneDisplay: string;
+    whatsappDigits: string;
+  } | null>(null);
+
   const todayISO = useMemo(() => todayISORecife(), []);
   const loadViagensHoje = useCallback(async () => {
     setViagensLoading(true);
@@ -103,10 +114,35 @@ export default function DashboardHomeClient({
     }
   }, []);
 
+  const loadBrand = useCallback(async () => {
+    setBrandLoading(true);
+    try {
+      const res = await fetch("/api/app-settings/public", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (json?.ok && json.data) {
+        setBrand({
+          companyDisplayName: String(json.data.companyDisplayName || ""),
+          companyLegalName: String(json.data.companyLegalName || ""),
+          cnpj: String(json.data.cnpj || ""),
+          instagramHandle: String(json.data.instagramHandle || "").replace(/^@/, ""),
+          phoneDisplay: String(json.data.phoneDisplay || ""),
+          whatsappDigits: String(json.data.whatsappDigits || "").replace(/\D+/g, ""),
+        });
+      } else {
+        setBrand(null);
+      }
+    } catch {
+      setBrand(null);
+    } finally {
+      setBrandLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadViagensHoje();
     loadPresence();
-  }, [loadViagensHoje, loadPresence]);
+    loadBrand();
+  }, [loadViagensHoje, loadPresence, loadBrand]);
 
   useEffect(() => {
     ping();
@@ -148,6 +184,72 @@ export default function DashboardHomeClient({
           </p>
         </div>
       </div>
+
+      <SectionCard
+        title={
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Building2 className="h-4 w-4 text-violet-600" aria-hidden />
+            Empresa
+          </span>
+        }
+      >
+        {brandLoading ? (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Carregando dados…
+          </div>
+        ) : brand ? (
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Marca</dt>
+              <dd className="font-medium text-slate-900">{brand.companyDisplayName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Razão social</dt>
+              <dd className="text-slate-800">{brand.companyLegalName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">CNPJ</dt>
+              <dd className="font-mono text-slate-800">{brand.cnpj}</dd>
+            </div>
+            <div className="flex items-start gap-2">
+              <Phone className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Telefone</dt>
+                <dd className="text-slate-800">{brand.phoneDisplay}</dd>
+              </div>
+            </div>
+            <div className="sm:col-span-2 flex flex-wrap gap-x-6 gap-y-2 pt-1">
+              <a
+                href={`https://instagram.com/${brand.instagramHandle}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-sky-700 underline-offset-4 hover:underline"
+              >
+                Instagram @{brand.instagramHandle}
+              </a>
+              <a
+                href={`https://wa.me/${brand.whatsappDigits}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-emerald-700 underline-offset-4 hover:underline"
+              >
+                WhatsApp
+              </a>
+              {session.role === "admin" ? (
+                <Link
+                  href="/dashboard/configuracoes"
+                  className="text-sm font-medium text-violet-700 underline-offset-4 hover:underline"
+                >
+                  Editar em Configurações
+                </Link>
+              ) : null}
+            </div>
+          </dl>
+        ) : (
+          <p className="text-sm text-slate-500">Não foi possível carregar os dados da empresa.</p>
+        )}
+      </SectionCard>
 
       <div>
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
