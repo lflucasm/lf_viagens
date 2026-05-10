@@ -56,6 +56,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   const [cpf, setCpf] = useState("");
   const [login, setLogin] = useState("");
   const [team, setTeam] = useState("");
+  const [role, setRole] = useState<"admin" | "staff" | "developer">("staff");
   const [balcaoCommissionPercent, setBalcaoCommissionPercent] = useState("");
   const [milheiroPayoutPercent, setMilheiroPayoutPercent] = useState("");
   // troca de senha
@@ -79,6 +80,9 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
       setCpf(u.cpf || "");
       setLogin(u.login || "");
       setTeam((u.team || "").trim());
+      const r = (u.role || "staff").toLowerCase();
+      if (r === "admin" || r === "staff" || r === "developer") setRole(r);
+      else setRole("staff");
       setBalcaoCommissionPercent(
         u.balcaoSellerCommissionPercent == null ? "" : String(u.balcaoSellerCommissionPercent)
       );
@@ -113,6 +117,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
         cpf: onlyDigits(cpf),
         login: login.trim().toLowerCase(),
         team: team.trim(),
+        role,
       };
 
       const pctRaw = balcaoCommissionPercent.trim();
@@ -174,7 +179,7 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
   async function excluirFuncionario() {
     if (!item) return;
     const ok = window.confirm(
-      `Excluir permanentemente o funcionário "${item.name}" (${item.login})? Esta ação não pode ser desfeita.`
+      `Excluir permanentemente o funcionário "${item.name}" (${item.login})? Cedentes e outros vínculos operacionais passam para o seu usuário (admin). Esta ação não pode ser desfeita.`
     );
     if (!ok) return;
 
@@ -288,6 +293,22 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
           </div>
 
           <div>
+            <label className="block text-sm mb-1">Papel</label>
+            <select
+              className="w-full rounded-xl border bg-white px-3 py-2"
+              value={role}
+              onChange={(e) => setRole(e.target.value as "admin" | "staff" | "developer")}
+            >
+              <option value="staff">Funcionário (staff) — aparece em comissões e lista</option>
+              <option value="admin">Administrador</option>
+              <option value="developer">Desenvolvedor — não entra na lista de funcionários pagáveis</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Use &quot;Desenvolvedor&quot; para quem só mantém o sistema, sem comissão de equipe.
+            </p>
+          </div>
+
+          <div>
             <label className="block text-sm mb-1">Pagamento sobre lucro milheiro (% do spread da venda)</label>
             <input
               className="w-full rounded-xl border px-3 py-2"
@@ -395,9 +416,9 @@ export default function FuncionarioEditClient({ id }: { id: string }) {
           <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 space-y-3">
             <div className="text-sm font-semibold text-rose-900">Zona de risco</div>
             <p className="text-xs text-rose-800/90">
-              Só é possível excluir se não houver cedentes como responsável, leads VIP, eventos de agenda criados por
-              este usuário, anotações, registros em Consolidadora cadastrados por ele, etc. O último administrador do
-              time não pode ser excluído nem ter o time alterado.
+              Ao excluir, cedentes e vínculos bloqueantes são transferidos para você (admin logado). Leads VIP do
+              funcionário são removidos. O último administrador de um time não pode ser excluído nem perder o papel
+              admin sem outro admin no mesmo time.
             </p>
             <button
               type="button"

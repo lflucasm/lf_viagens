@@ -24,7 +24,14 @@ const ADMIN_LOGIN = "lucas_fellype";
 const DEV_LOGIN = "jephesson";
 const TEAM_LF = "LF Viagens";
 /** Valores antigos de `team` no banco; todo mundo deve ficar em TEAM_LF. */
-const LEGACY_TEAMS = ["@vias_aereas", "vias_aereas"];
+const LEGACY_TEAMS = [
+  "@vias_aereas",
+  "vias_aereas",
+  "@LF.Viagens",
+  "@lf.viagens",
+  "LF.Viagens",
+  "@LF Viagens",
+];
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -79,8 +86,15 @@ async function main() {
       });
 
       await prisma.agendaEvent.updateMany({
+        where: { userId: u.id },
+        data: { userId: admin.id },
+      });
+      await prisma.agendaEvent.updateMany({
         where: { createdById: u.id },
         data: { createdById: admin.id },
+      });
+      await prisma.agendaMemberColor.deleteMany({
+        where: { userId: u.id },
       });
       await prisma.agendaAudit.updateMany({
         where: { actorId: u.id },

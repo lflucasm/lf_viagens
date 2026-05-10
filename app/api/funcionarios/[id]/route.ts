@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-server";
 import { resolveBalcaoSellerCommissionPercent } from "@/lib/balcao-commission";
+import { reassignEmployeeScopedData } from "@/lib/reassign-staff-exit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,7 +75,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if ("error" in gate) return gate.error;
 
   const u = await prisma.user.findFirst({
-    where: { id, team: gate.sess.team },
+    where: { id },
     select: {
       id: true,
       login: true,
@@ -126,7 +127,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const body = await req.json().catch(() => ({}));
 
   const existing = await prisma.user.findFirst({
-    where: { id, team: gate.sess.team },
+    where: { id },
     select: { id: true, team: true, role: true },
   });
   if (!existing) {
@@ -146,6 +147,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ ok: false, error: "Time inválido." }, { status: 400, headers: noCacheHeaders() });
     }
     team = t;
+  }
+
+  let roleUpdate: string | undefined = undefined;
+  if ("role" in body && body?.role != null) {
+    const r = String(body.role).trim().toLowerCase();
+    if (r !== "admin" && r !== "staff" && r !== "developer") {
+      return NextResponse.json({ ok: false, error: "Papel inválido." }, { status: 400, headers: noCacheHeaders() });
+    }
+    roleUpdate = r;
   }
 
   let milheiroSellerPayoutPercent: number | null | undefined = undefined;
@@ -190,6 +200,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (team !== undefined && team !== existing.team) {
       await assertNotLastAdminOfTeam(existing.team, id);
     }
+    if (roleUpdate !== undefined && existing.role === "admin" && roleUpdate !== "admin") {
+      await assertNotLastAdminOfTeam(existing.team, id);
+    }
 
     const updated = await prisma.user.update({
       where: { id },
@@ -199,6 +212,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         cpf: cpf ? cpf : null,
         employeeId,
         ...(team !== undefined ? { team } : {}),
+        ...(roleUpdate !== undefined ? { role: roleUpdate } : {}),
         ...(balcaoSellerCommissionPercent !== undefined
           ? { balcaoSellerCommissionPercent }
           : {}),
@@ -241,8 +255,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       },
       { headers: noCacheHeaders() }
     );
-  } catch (e: any) {
-    if (e?.code === "LAST_ADMIN" || e?.message === "LAST_ADMIN") {
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err?.code === "LAST_ADMIN" || err?.message === "LAST_ADMIN") {
       return NextResponse.json(
         {
           ok: false,
@@ -251,7 +266,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         { status: 409, headers: noCacheHeaders() }
       );
     }
-    if (e?.code === "P2002") {
+    if (err?.code === "P2002") {
       return NextResponse.json({ ok: false, error: "Login ou ID já está em uso." }, { status: 409, headers: noCacheHeaders() });
     }
     console.error("Erro PATCH /api/funcionarios/[id]:", e);
@@ -268,58 +283,24 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     return NextResponse.json({ ok: false, error: "Você não pode excluir a si mesmo." }, { status: 400, headers: noCacheHeaders() });
   }
 
-  const target = await prisma.user.findFirst({
-    where: { id, team: gate.sess.team },
-    select: { id: true },
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, team: true, role: true, login: true },
   });
   if (!target) {
     return NextResponse.json({ ok: false, error: "Funcionário não encontrado." }, { status: 404, headers: noCacheHeaders() });
   }
 
   try {
-    await assertNotLastAdminOfTeam(gate.sess.team, id);
-
-    const [
-      cedentes,
-      vipLeads,
-      agendaCriados,
-      auditorias,
-      anotacoes,
-      vendasConsolidadora,
-    ] = await Promise.all([
-      prisma.cedente.count({ where: { ownerId: id } }),
-      prisma.vipWhatsappLead.count({ where: { employeeId: id } }),
-      prisma.agendaEvent.count({ where: { createdById: id } }),
-      prisma.agendaAudit.count({ where: { actorId: id } }),
-      prisma.anotacao.count({ where: { createdById: id } }),
-      prisma.consolidatorSale.count({ where: { createdById: id } }),
-    ]);
-
-    const partes: string[] = [];
-    if (cedentes > 0) partes.push(`${cedentes} cedente(s) como responsável`);
-    if (vipLeads > 0) partes.push(`${vipLeads} lead(s) VIP WhatsApp`);
-    if (agendaCriados > 0) partes.push(`${agendaCriados} evento(s) de agenda criados`);
-    if (auditorias > 0) partes.push(`${auditorias} registro(s) de auditoria da agenda`);
-    if (anotacoes > 0) partes.push(`${anotacoes} anotação(ões)`);
-    if (vendasConsolidadora > 0) {
-      partes.push(`${vendasConsolidadora} registro(s) em Consolidadora (cadastrados por este usuário)`);
-    }
-
-    if (partes.length > 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Não é possível excluir: ${partes.join("; ")}. Resolva os vínculos antes.`,
-        },
-        { status: 409, headers: noCacheHeaders() }
-      );
-    }
+    await reassignEmployeeScopedData(prisma, { fromUserId: id, toUserId: gate.sess.id });
+    await assertNotLastAdminOfTeam(target.team, id);
 
     await prisma.user.delete({ where: { id } });
 
     return NextResponse.json({ ok: true }, { headers: noCacheHeaders() });
-  } catch (e: any) {
-    if (e?.code === "LAST_ADMIN" || e?.message === "LAST_ADMIN") {
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err?.code === "LAST_ADMIN" || err?.message === "LAST_ADMIN") {
       return NextResponse.json(
         {
           ok: false,
@@ -328,7 +309,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
         { status: 409, headers: noCacheHeaders() }
       );
     }
-    if (e?.code === "P2003") {
+    if (err?.code === "P2003") {
       return NextResponse.json(
         {
           ok: false,
